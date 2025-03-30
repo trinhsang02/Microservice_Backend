@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  rabbitmq:
+    image: "rabbitmq:3-management"
+    ports:
+      - "15672:15672" # RabbitMQ management port
+      - "5672:5672" # RabbitMQ main port
+    networks:
+      - microservices-network
+
+  blockchain-listener:
+    build:
+      context: ./blockchain-listener
+    ports:
+      - "8081:8081"
+      - "50051:50051" # gRPC port
+    networks:
+      - microservices-network
+    depends_on:
+      - rabbitmq
+    environment:
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+
+  notification-service:
+    build:
+      context: ./notification-service
+    ports:
+      - "8082:8082"
+      - "50052:50052" # gRPC port
+    networks:
+      - microservices-network
+    depends_on:
+      - rabbitmq
+    environment:
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+
+  relayer-service:
+    build:
+      context: ./relayer-service
+    ports:
+      - "8083:8083"
+      - "50053:50053" # gRPC port
+    networks:
+      - microservices-network
+    depends_on:
+      - rabbitmq
+    environment:
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+
+networks:
+  microservices-network:
+    driver: bridge
