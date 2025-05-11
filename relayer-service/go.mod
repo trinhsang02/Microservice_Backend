@@ -7,6 +7,7 @@ toolchain go1.24.1
 require google.golang.org/grpc v1.71.0
 
 require (
+	github.com/lib/pq v1.10.9
 	github.com/rabbitmq/amqp091-go v1.10.0 // indirect
 	github.com/streadway/amqp v1.1.0 // indirect
 	golang.org/x/net v0.34.0 // indirect
