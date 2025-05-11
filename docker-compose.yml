@@ -9,6 +9,20 @@ services:
     networks:
       - microservices-network
 
+  postgres:
+    image: "postgres:13"
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=microservices
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./database_backup:/docker-entrypoint-initdb.d
+    networks:
+      - microservices-network
+
   blockchain-listener:
     build:
       context: ./blockchain-listener
@@ -19,8 +33,15 @@ services:
       - microservices-network
     depends_on:
       - rabbitmq
+      - postgres
     environment:
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=microservices
+      - DB_SCHEMA=public
 
   notification-service:
     build:
@@ -32,8 +53,15 @@ services:
       - microservices-network
     depends_on:
       - rabbitmq
+      - postgres
     environment:
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=microservices
+      - DB_SCHEMA=public
 
   relayer-service:
     build:
@@ -45,9 +73,38 @@ services:
       - microservices-network
     depends_on:
       - rabbitmq
+      - postgres
     environment:
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=microservices
+      - DB_SCHEMA=public
+
+  common-service:
+    build:
+      context: ./common-service
+    ports:
+      - "8080:8080"
+    networks:
+      - microservices-network
+    depends_on:
+      - postgres
+    environment:
+      - PORT=8080
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=microservices
+      - DB_SCHEMA=public
 
 networks:
   microservices-network:
     driver: bridge
+
+volumes:
+  postgres-data:
+  pgadmin-data:
