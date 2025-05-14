@@ -1,13 +1,17 @@
 # Use an official Golang runtime as a parent image
 FROM golang:1.23
 
-# Set the Current Working Directory inside the container
+# Set the working directory for the build
 WORKDIR /app
 
-# Copy the source code into the container
-COPY . .
+# Copy only the needed folders
+COPY blockchain-listener/ ./blockchain-listener/
+COPY db/ ./db/
 
-# Build the Go app
+# Set the working directory to the service
+WORKDIR /app/blockchain-listener
+
+# Build the service
 RUN go build -o blockchain-listener .
 
 # Expose the ports that the app will run on

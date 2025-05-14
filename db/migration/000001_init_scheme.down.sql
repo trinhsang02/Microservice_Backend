@@ -1,0 +1,5 @@
+
+DROP TABLE IF EXISTS withdrawals;
+DROP TABLE IF EXISTS wallet_info;
+DROP TABLE IF EXISTS deposits;
+DROP TABLE IF EXISTS kyc_info;
