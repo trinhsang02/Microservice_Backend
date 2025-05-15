@@ -1,6 +1,7 @@
 package main
 
 import (
+	"blockchain-listener/rabbitmq"
 	"context"
 	"encoding/hex"
 	"fmt"
@@ -9,17 +10,16 @@ import (
 	"os"
 	"strings"
 
-	"blockchain-listener/rabbitmq"
-
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/joho/godotenv"
+	"github.com/yourusername/yourrepo/db/sqlc"
 )
-
-const contractAddress = "0xf7247772787Dcf46FDfA98CAC15382fF98eaE225"
-const RPC_URL = "wss://ronin-saigon.g.alchemy.com/v2/sA-DN7hd8Jk7m34FB5GH2Zt_wb0u_Tud"
 
 // ABI for the Deposit and Withdrawal events
 const contractABI = `[
@@ -28,7 +28,29 @@ const contractABI = `[
 ]`
 
 func main() {
+	// Load .env file
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found or error loading it. Using environment variables.")
+	}
+
 	rabbitmqURL := os.Getenv("RABBITMQ_URL")
+	mixer_0_1 := os.Getenv("MIXER_0_1")
+	mixer_1 := os.Getenv("MIXER_1")
+	mixer_10 := os.Getenv("MIXER_10")
+	mixer_100 := os.Getenv("MIXER_100")
+	rpcURL := os.Getenv("RONIN_WEBSOCKET_URL")
+
+	log.Printf("RabbitMQ URL: %s", rabbitmqURL)
+	log.Printf("Mixer 0.1 Address: %s", mixer_0_1)
+	log.Printf("Mixer 1 Address: %s", mixer_1)
+	log.Printf("Mixer 10 Address: %s", mixer_10)
+	log.Printf("Mixer 100 Address: %s", mixer_100)
+	log.Printf("RPC URL: %s", rpcURL)
+
+	if mixer_0_1 == "" || mixer_1 == "" || mixer_10 == "" || mixer_100 == "" {
+		log.Fatalf("Missing environment variables")
+	}
+
 	if rabbitmqURL == "" {
 		rabbitmqURL = "amqp://guest:guest@rabbitmq:5672/"
 	}
@@ -40,7 +62,23 @@ func main() {
 	}
 	defer producer.Close()
 
-	client, err := ethclient.Dial(RPC_URL)
+	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
+		os.Getenv("DB_USER"),
+		os.Getenv("DB_PASSWORD"),
+		os.Getenv("DB_HOST"),
+		os.Getenv("DB_PORT"),
+		os.Getenv("DB_NAME"),
+	)
+
+	conn, err := pgx.Connect(context.Background(), dsn)
+	if err != nil {
+		log.Fatalf("Unable to connect to database: %v\n", err)
+	}
+	defer conn.Close(context.Background())
+
+	queries := sqlc.New(conn)
+
+	client, err := ethclient.Dial("https://ronin-saigon.g.alchemy.com/v2/o18cYN4bRHQDLeD10ewVI17551htkNKg")
 	if err != nil {
 		log.Fatalf("Failed to connect to Ethereum RPC: %v", err)
 	}
@@ -51,10 +89,86 @@ func main() {
 		log.Fatalf("Failed to parse contract ABI: %v", err)
 	}
 
-	contract := common.HexToAddress(contractAddress)
+	contract := common.HexToAddress(mixer_0_1)
+
+	// Get the latest block number
+	latestBlock, err := client.BlockNumber(context.Background())
+	if err != nil {
+		log.Fatalf("Failed to get latest block number: %v", err)
+	}
+
+	// Start from a specific block or use a reasonable starting point
+	startBlock := uint64(37659740)
+	blockChunkSize := uint64(499)
+
+	for currentBlock := startBlock; currentBlock <= latestBlock; currentBlock += blockChunkSize {
+		endBlock := currentBlock + blockChunkSize
+		if endBlock > latestBlock {
+			endBlock = latestBlock
+		}
+
+		query := ethereum.FilterQuery{
+			FromBlock: big.NewInt(int64(currentBlock)),
+			ToBlock:   big.NewInt(int64(endBlock)),
+			Addresses: []common.Address{contract},
+			Topics: [][]common.Hash{{
+				parsedABI.Events["Deposit"].ID,
+			}},
+		}
+
+		logs, err := client.FilterLogs(context.Background(), query)
+		if err != nil {
+			log.Printf("Error filtering logs: %v", err)
+			continue
+		}
+
+		for _, vLog := range logs {
+			// Process Deposit event
+			data := make(map[string]interface{})
+			err = parsedABI.UnpackIntoMap(data, "Deposit", vLog.Data)
+			if err != nil {
+				log.Printf("Failed to unpack Deposit event: %v", err)
+				continue
+			}
+
+			// Extract indexed parameters
+			commitment := common.BytesToHash(vLog.Topics[1][:]).Hex()
+			depositor := common.BytesToAddress(vLog.Topics[2][:]).Hex()
+
+			// Extract non-indexed parameters
+			leafIndex := uint32(0)
+			if leafIndexVal, ok := data["leafIndex"].(uint32); ok {
+				leafIndex = leafIndexVal
+			}
+
+			// Extract the timestamp as *big.Int from the event data
+			if timestampVal, ok := data["timestamp"].(*big.Int); ok {
+				// Store in database
+				_, err = queries.CreateDeposit(context.Background(), sqlc.CreateDepositParams{
+					ContractAddress: pgtype.Text{String: contract.Hex(), Valid: true},
+					Commitment:      pgtype.Text{String: commitment, Valid: true},
+					Depositor:       pgtype.Text{String: depositor, Valid: true},
+					LeafIndex:       pgtype.Int4{Int32: int32(leafIndex), Valid: true},
+					Timestamp:       pgtype.Numeric{Int: timestampVal, Valid: true},
+					TxHash:          pgtype.Text{String: vLog.TxHash.Hex(), Valid: true},
+				})
+				if err != nil {
+					log.Printf("Failed to insert deposit: %v", err)
+				} else {
+					log.Printf("Deposit event stored: commitment=%s, depositor=%s, timestamp=%s, txHash=%s", commitment, depositor, timestampVal.String(), vLog.TxHash.Hex())
+				}
+			}
+		}
+
+		log.Printf("Processed blocks %d to %d, found %d deposit events", currentBlock, endBlock, len(logs))
+	}
+
 	query := ethereum.FilterQuery{
 		Addresses: []common.Address{contract},
+		FromBlock: big.NewInt(37511375),
 	}
+
+	log.Printf("FilterQuery: %+v", query)
 
 	logs := make(chan types.Log)
 	ctx := context.Background()

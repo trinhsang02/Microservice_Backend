@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   rabbitmq:
@@ -11,7 +11,8 @@ services:
 
   blockchain-listener:
     build:
-      context: ./blockchain-listener
+      context: .
+      dockerfile: ./blockchain-listener/Dockerfile
     ports:
       - "8081:8081"
       - "50051:50051" # gRPC port
