@@ -49,6 +49,15 @@ services:
     environment:
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
 
+  common-service:
+    build:
+      context: .
+      dockerfile: ./common-service/Dockerfile
+    ports:
+      - "8080:8080"
+    networks:
+      - microservices-network
+
 networks:
   microservices-network:
     driver: bridge
