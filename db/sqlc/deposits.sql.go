@@ -12,8 +12,8 @@ import (
 )
 
 const createDeposit = `-- name: CreateDeposit :one
-INSERT INTO deposits (contract_address, commitment, depositor, leaf_index, tx_hash, timestamp) 
-VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, contract_address, commitment, depositor, leaf_index, tx_hash, timestamp
+INSERT INTO deposits (contract_address, commitment, depositor, leaf_index, tx_hash, timestamp, block_number, chain_id) 
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, contract_address, commitment, depositor, leaf_index, tx_hash, timestamp, block_number, chain_id
 `
 
 type CreateDepositParams struct {
@@ -23,6 +23,8 @@ type CreateDepositParams struct {
 	LeafIndex       pgtype.Int4
 	TxHash          pgtype.Text
 	Timestamp       pgtype.Numeric
+	BlockNumber     pgtype.Int4
+	ChainID         pgtype.Int4
 }
 
 func (q *Queries) CreateDeposit(ctx context.Context, arg CreateDepositParams) (Deposit, error) {
@@ -33,6 +35,8 @@ func (q *Queries) CreateDeposit(ctx context.Context, arg CreateDepositParams) (D
 		arg.LeafIndex,
 		arg.TxHash,
 		arg.Timestamp,
+		arg.BlockNumber,
+		arg.ChainID,
 	)
 	var i Deposit
 	err := row.Scan(
@@ -43,17 +47,56 @@ func (q *Queries) CreateDeposit(ctx context.Context, arg CreateDepositParams) (D
 		&i.LeafIndex,
 		&i.TxHash,
 		&i.Timestamp,
+		&i.BlockNumber,
+		&i.ChainID,
 	)
 	return i, err
 }
 
-const getAllDepositsOfContract = `-- name: GetAllDepositsOfContract :many
-SELECT id, contract_address, commitment, depositor, leaf_index, tx_hash, timestamp FROM deposits WHERE contract_address = $1
-ORDER BY leaf_index ASC
+const getDepositByCommitment = `-- name: GetDepositByCommitment :one
+SELECT id, contract_address, commitment, depositor, leaf_index, tx_hash, timestamp, block_number, chain_id FROM deposits 
+WHERE commitment = $1
 `
 
-func (q *Queries) GetAllDepositsOfContract(ctx context.Context, contractAddress pgtype.Text) ([]Deposit, error) {
-	rows, err := q.db.Query(ctx, getAllDepositsOfContract, contractAddress)
+func (q *Queries) GetDepositByCommitment(ctx context.Context, commitment pgtype.Text) (Deposit, error) {
+	row := q.db.QueryRow(ctx, getDepositByCommitment, commitment)
+	var i Deposit
+	err := row.Scan(
+		&i.ID,
+		&i.ContractAddress,
+		&i.Commitment,
+		&i.Depositor,
+		&i.LeafIndex,
+		&i.TxHash,
+		&i.Timestamp,
+		&i.BlockNumber,
+		&i.ChainID,
+	)
+	return i, err
+}
+
+const getDepositsFromBlockToBlock = `-- name: GetDepositsFromBlockToBlock :many
+SELECT id, contract_address, commitment, depositor, leaf_index, tx_hash, timestamp, block_number, chain_id FROM deposits 
+WHERE contract_address = $1
+AND chain_id = $2
+AND block_number BETWEEN $3 AND $4
+ORDER BY block_number ASC
+`
+
+type GetDepositsFromBlockToBlockParams struct {
+	ContractAddress pgtype.Text
+	ChainID         pgtype.Int4
+	BlockNumber     pgtype.Int4
+	BlockNumber_2   pgtype.Int4
+}
+
+func (q *Queries) GetDepositsFromBlockToBlock(ctx context.Context, arg GetDepositsFromBlockToBlockParams) ([]Deposit, error) {
+	rows, err := q.db.Query(ctx, getDepositsFromBlockToBlock,
+		arg.ContractAddress,
+		arg.ChainID,
+		arg.BlockNumber,
+		arg.BlockNumber_2,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -69,6 +112,8 @@ func (q *Queries) GetAllDepositsOfContract(ctx context.Context, contractAddress 
 			&i.LeafIndex,
 			&i.TxHash,
 			&i.Timestamp,
+			&i.BlockNumber,
+			&i.ChainID,
 		); err != nil {
 			return nil, err
 		}
@@ -80,31 +125,67 @@ func (q *Queries) GetAllDepositsOfContract(ctx context.Context, contractAddress 
 	return items, nil
 }
 
-const getAllDepositsOfDepositor = `-- name: getAllDepositsOfDepositor :many
-SELECT id, contract_address, commitment, depositor, leaf_index, tx_hash, timestamp FROM deposits WHERE depositor = $1
+const getEarliestDepositSyncedBlock = `-- name: GetEarliestDepositSyncedBlock :one
+SELECT MIN(block_number) FROM deposits 
+WHERE contract_address = $1
+AND chain_id = $2
 `
 
-func (q *Queries) getAllDepositsOfDepositor(ctx context.Context, depositor pgtype.Text) ([]Deposit, error) {
-	rows, err := q.db.Query(ctx, getAllDepositsOfDepositor, depositor)
+type GetEarliestDepositSyncedBlockParams struct {
+	ContractAddress pgtype.Text
+	ChainID         pgtype.Int4
+}
+
+func (q *Queries) GetEarliestDepositSyncedBlock(ctx context.Context, arg GetEarliestDepositSyncedBlockParams) (interface{}, error) {
+	row := q.db.QueryRow(ctx, getEarliestDepositSyncedBlock, arg.ContractAddress, arg.ChainID)
+	var min interface{}
+	err := row.Scan(&min)
+	return min, err
+}
+
+const getLatestDepositSyncedBlock = `-- name: GetLatestDepositSyncedBlock :one
+SELECT MAX(block_number) FROM deposits 
+WHERE contract_address = $1
+AND chain_id = $2
+`
+
+type GetLatestDepositSyncedBlockParams struct {
+	ContractAddress pgtype.Text
+	ChainID         pgtype.Int4
+}
+
+func (q *Queries) GetLatestDepositSyncedBlock(ctx context.Context, arg GetLatestDepositSyncedBlockParams) (interface{}, error) {
+	row := q.db.QueryRow(ctx, getLatestDepositSyncedBlock, arg.ContractAddress, arg.ChainID)
+	var max interface{}
+	err := row.Scan(&max)
+	return max, err
+}
+
+const getLeaves = `-- name: GetLeaves :many
+SELECT commitment FROM deposits
+WHERE contract_address = $1
+AND chain_id = $2
+ORDER BY leaf_index ASC
+`
+
+type GetLeavesParams struct {
+	ContractAddress pgtype.Text
+	ChainID         pgtype.Int4
+}
+
+func (q *Queries) GetLeaves(ctx context.Context, arg GetLeavesParams) ([]pgtype.Text, error) {
+	rows, err := q.db.Query(ctx, getLeaves, arg.ContractAddress, arg.ChainID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Deposit
+	var items []pgtype.Text
 	for rows.Next() {
-		var i Deposit
-		if err := rows.Scan(
-			&i.ID,
-			&i.ContractAddress,
-			&i.Commitment,
-			&i.Depositor,
-			&i.LeafIndex,
-			&i.TxHash,
-			&i.Timestamp,
-		); err != nil {
+		var commitment pgtype.Text
+		if err := rows.Scan(&commitment); err != nil {
 			return nil, err
 		}
-		items = append(items, i)
+		items = append(items, commitment)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

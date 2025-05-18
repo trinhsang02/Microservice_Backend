@@ -5,7 +5,9 @@ CREATE TABLE IF NOT EXISTS deposits (
     depositor VARCHAR(255),
     leaf_index INT,
     tx_hash VARCHAR(255),
-    timestamp NUMERIC
+    timestamp NUMERIC,
+    block_number INT,
+    chain_id INT
 );
 
 CREATE TABLE IF NOT EXISTS withdrawals (
@@ -16,7 +18,9 @@ CREATE TABLE IF NOT EXISTS withdrawals (
     relayer VARCHAR(255),
     fee NUMERIC,
     tx_hash VARCHAR(255),
-    timestamp NUMERIC
+    timestamp NUMERIC,
+    block_number INT,
+    chain_id INT
 );
 
 CREATE TABLE IF NOT EXISTS kyc_info (

@@ -16,6 +16,8 @@ type Deposit struct {
 	LeafIndex       pgtype.Int4
 	TxHash          pgtype.Text
 	Timestamp       pgtype.Numeric
+	BlockNumber     pgtype.Int4
+	ChainID         pgtype.Int4
 }
 
 type KycInfo struct {
@@ -45,4 +47,6 @@ type Withdrawal struct {
 	Fee             pgtype.Numeric
 	TxHash          pgtype.Text
 	Timestamp       pgtype.Numeric
+	BlockNumber     pgtype.Int4
+	ChainID         pgtype.Int4
 }

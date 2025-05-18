@@ -8,12 +8,10 @@ import (
 	"os"
 
 	"common-service/api"
-	"common-service/database"
-
-	"github.com/yourusername/yourrepo/db/sqlc"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
+	"github.com/yourusername/yourrepo/db/sqlc"
 )
 
 func checkDatabaseConnection(pool *pgxpool.Pool) error {
@@ -39,7 +37,6 @@ func main() {
 		log.Println("No .env file found or error loading it. Using environment variables.")
 	}
 
-	// Initialize database connection
 	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
 		os.Getenv("DB_USER"),
 		os.Getenv("DB_PASSWORD"),
@@ -63,8 +60,7 @@ func main() {
 	log.Println("Successfully connected to database!")
 
 	// Initialize queries and repository
-	queries := sqlc.New(pool)
-	repo := database.NewRepository(queries)
+	repo := sqlc.NewRepository(sqlc.New(pool))
 
 	// Initialize API handler
 	handler := api.NewHandler(repo)
