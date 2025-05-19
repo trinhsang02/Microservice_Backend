@@ -78,94 +78,151 @@ func main() {
 
 	queries := sqlc.New(conn)
 
-	client, err := ethclient.Dial("https://ronin-saigon.g.alchemy.com/v2/o18cYN4bRHQDLeD10ewVI17551htkNKg")
+	client, err := ethclient.Dial(rpcURL)
 	if err != nil {
 		log.Fatalf("Failed to connect to Ethereum RPC: %v", err)
 	}
 	log.Println("Connected to Ethereum RPC")
 
-	parsedABI, err := abi.JSON(strings.NewReader(contractABI))
 	if err != nil {
 		log.Fatalf("Failed to parse contract ABI: %v", err)
 	}
 
-	contract := common.HexToAddress(mixer_0_1)
+	// Convert all contract addresses
+	mixer0_1Contract := common.HexToAddress(mixer_0_1)
+	mixer1Contract := common.HexToAddress(mixer_1)
+	mixer10Contract := common.HexToAddress(mixer_10)
+	mixer100Contract := common.HexToAddress(mixer_100)
 
-	// Get the latest block number
-	latestBlock, err := client.BlockNumber(context.Background())
-	if err != nil {
-		log.Fatalf("Failed to get latest block number: %v", err)
-	}
+	/* ----------------------Sync Deposits and Withdrawals---------------------- */
+	// // Get the latest block number
+	// latestBlock, err := client.BlockNumber(context.Background())
+	// if err != nil {
+	// 	log.Fatalf("Failed to get latest block number: %v", err)
+	// }
 
-	// Start from a specific block or use a reasonable starting point
-	startBlock := uint64(37659740)
-	blockChunkSize := uint64(499)
+	// // Start from a specific block or use a reasonable starting point
+	// startBlock := uint64(37909500)
+	// blockChunkSize := uint64(499)
+	// parsedABI, err := abi.JSON(strings.NewReader(contractABI))
 
-	for currentBlock := startBlock; currentBlock <= latestBlock; currentBlock += blockChunkSize {
-		endBlock := currentBlock + blockChunkSize
-		if endBlock > latestBlock {
-			endBlock = latestBlock
-		}
+	// for currentBlock := startBlock; currentBlock <= latestBlock; currentBlock += blockChunkSize {
+	// 	endBlock := currentBlock + blockChunkSize
+	// 	if endBlock > latestBlock {
+	// 		endBlock = latestBlock
+	// 	}
 
-		query := ethereum.FilterQuery{
-			FromBlock: big.NewInt(int64(currentBlock)),
-			ToBlock:   big.NewInt(int64(endBlock)),
-			Addresses: []common.Address{contract},
-			Topics: [][]common.Hash{{
-				parsedABI.Events["Deposit"].ID,
-			}},
-		}
+	// 	query := ethereum.FilterQuery{
+	// 		FromBlock: big.NewInt(int64(currentBlock)),
+	// 		ToBlock:   big.NewInt(int64(endBlock)),
+	// 		Addresses: []common.Address{mixer0_1Contract, mixer1Contract, mixer10Contract, mixer100Contract},
+	// 	}
 
-		logs, err := client.FilterLogs(context.Background(), query)
-		if err != nil {
-			log.Printf("Error filtering logs: %v", err)
-			continue
-		}
+	// 	logs, err := client.FilterLogs(context.Background(), query)
+	// 	if err != nil {
+	// 		log.Printf("Error filtering logs: %v", err)
+	// 		continue
+	// 	}
 
-		for _, vLog := range logs {
-			// Process Deposit event
-			data := make(map[string]interface{})
-			err = parsedABI.UnpackIntoMap(data, "Deposit", vLog.Data)
-			if err != nil {
-				log.Printf("Failed to unpack Deposit event: %v", err)
-				continue
-			}
+	// 	if len(logs) == 0 {
+	// 		log.Printf("No logs found for block %d", currentBlock)
+	// 		continue
+	// 	}
 
-			// Extract indexed parameters
-			commitment := common.BytesToHash(vLog.Topics[1][:]).Hex()
-			depositor := common.BytesToAddress(vLog.Topics[2][:]).Hex()
+	// 	for _, vLog := range logs {
 
-			// Extract non-indexed parameters
-			leafIndex := uint32(0)
-			if leafIndexVal, ok := data["leafIndex"].(uint32); ok {
-				leafIndex = leafIndexVal
-			}
+	// 		event, err := parsedABI.EventByID(vLog.Topics[0])
+	// 		if err != nil {
+	// 			log.Printf("Unknown event: %v", err)
+	// 			continue
+	// 		}
 
-			// Extract the timestamp as *big.Int from the event data
-			if timestampVal, ok := data["timestamp"].(*big.Int); ok {
-				// Store in database
-				_, err = queries.CreateDeposit(context.Background(), sqlc.CreateDepositParams{
-					ContractAddress: pgtype.Text{String: contract.Hex(), Valid: true},
-					Commitment:      pgtype.Text{String: commitment, Valid: true},
-					Depositor:       pgtype.Text{String: depositor, Valid: true},
-					LeafIndex:       pgtype.Int4{Int32: int32(leafIndex), Valid: true},
-					Timestamp:       pgtype.Numeric{Int: timestampVal, Valid: true},
-					TxHash:          pgtype.Text{String: vLog.TxHash.Hex(), Valid: true},
-				})
-				if err != nil {
-					log.Printf("Failed to insert deposit: %v", err)
-				} else {
-					log.Printf("Deposit event stored: commitment=%s, depositor=%s, timestamp=%s, txHash=%s", commitment, depositor, timestampVal.String(), vLog.TxHash.Hex())
-				}
-			}
-		}
+	// 		if event.Name == "Deposit" {
+	// 			data := make(map[string]interface{})
+	// 			err = parsedABI.UnpackIntoMap(data, event.Name, vLog.Data)
 
-		log.Printf("Processed blocks %d to %d, found %d deposit events", currentBlock, endBlock, len(logs))
-	}
+	// 			if err != nil {
+	// 				log.Printf("Failed to unpack event: %v", err)
+	// 				continue
+	// 			}
+	// 			// Extract indexed parameters
+	// 			commitment := common.BytesToHash(vLog.Topics[1][:]).Hex()
+	// 			depositor := common.BytesToAddress(vLog.Topics[2][:]).Hex()
+
+	// 			// Extract non-indexed parameters
+	// 			leafIndex := uint32(0)
+	// 			if leafIndexVal, ok := data["leafIndex"].(uint32); ok {
+	// 				leafIndex = leafIndexVal
+	// 			}
+
+	// 			// Extract the timestamp as *big.Int from the event data
+	// 			if timestampVal, ok := data["timestamp"].(*big.Int); ok {
+	// 				// Store in database
+	// 				_, err = queries.CreateDeposit(context.Background(), sqlc.CreateDepositParams{
+	// 					ContractAddress: pgtype.Text{String: vLog.Address.Hex(), Valid: true},
+	// 					Commitment:      pgtype.Text{String: commitment, Valid: true},
+	// 					Depositor:       pgtype.Text{String: depositor, Valid: true},
+	// 					LeafIndex:       pgtype.Int4{Int32: int32(leafIndex), Valid: true},
+	// 					Timestamp:       pgtype.Numeric{Int: timestampVal, Valid: true},
+	// 					TxHash:          pgtype.Text{String: vLog.TxHash.Hex(), Valid: true},
+	// 					BlockNumber:     pgtype.Int4{Int32: int32(vLog.BlockNumber), Valid: true},
+	// 					ChainID:         pgtype.Int4{Int32: int32(2021), Valid: true},
+	// 				})
+	// 				if err != nil {
+	// 					log.Printf("Failed to insert deposit: %v", err)
+	// 				} else {
+	// 					log.Printf("Deposit event stored: commitment=%s, depositor=%s, timestamp=%s, txHash=%s", commitment, depositor, timestampVal.String(), vLog.TxHash.Hex())
+	// 				}
+	// 			}
+	// 		} else {
+	// 			// Extract indexed parameter
+	// 			relayer := common.BytesToAddress(vLog.Topics[1][:]).Hex()
+
+	// 			// For Withdrawal events, data contains:
+	// 			// [0:32]   - recipient (address)
+	// 			// [32:64]  - nullifierHash (bytes32)
+	// 			// [64:96]  - fee (uint256)
+	// 			if len(vLog.Data) < 96 {
+	// 				log.Printf("Invalid data length for Withdrawal event: %d", len(vLog.Data))
+	// 				continue
+	// 			}
+
+	// 			// Extract recipient (first 32 bytes, but only last 20 bytes are the address)
+	// 			recipient := common.BytesToAddress(vLog.Data[12:32]).Hex()
+
+	// 			// Extract nullifierHash (next 32 bytes)
+	// 			nullifier := "0x" + hex.EncodeToString(vLog.Data[32:64])
+
+	// 			// Extract fee (last 32 bytes)
+	// 			fee := new(big.Int).SetBytes(vLog.Data[64:96])
+
+	// 			log.Printf("Withdrawal data extracted - recipient: %s, nullifier: %s, relayer: %s, fee: %s",
+	// 				recipient, nullifier, relayer, fee.String())
+
+	// 			// Store in database
+	// 			_, err = queries.CreateWithdrawal(context.Background(), sqlc.CreateWithdrawalParams{
+	// 				ContractAddress: pgtype.Text{String: vLog.Address.Hex(), Valid: true},
+	// 				NullifierHash:   pgtype.Text{String: nullifier, Valid: true},
+	// 				Recipient:       pgtype.Text{String: recipient, Valid: true},
+	// 				Relayer:         pgtype.Text{String: relayer, Valid: true},
+	// 				Fee:             pgtype.Numeric{Int: fee, Valid: true},
+	// 				Timestamp:       pgtype.Numeric{Int: big.NewInt(int64(vLog.BlockNumber)), Valid: true},
+	// 				TxHash:          pgtype.Text{String: vLog.TxHash.Hex(), Valid: true},
+	// 				BlockNumber:     pgtype.Int4{Int32: int32(vLog.BlockNumber), Valid: true},
+	// 				ChainID:         pgtype.Int4{Int32: int32(2021), Valid: true},
+	// 			})
+	// 			if err != nil {
+	// 				log.Printf("Failed to insert withdrawal: %v", err)
+	// 			} else {
+	// 				log.Printf("Withdrawal event stored: nullifierHash=%s, recipient=%s, relayer=%s, fee=%s, txHash=%s",
+	// 					nullifier, recipient, relayer, fee.String(), vLog.TxHash.Hex())
+	// 			}
+	// 		}
+	// 	}
+	// }
 
 	query := ethereum.FilterQuery{
-		Addresses: []common.Address{contract},
-		FromBlock: big.NewInt(37511375),
+		Addresses: []common.Address{mixer0_1Contract, mixer1Contract, mixer10Contract, mixer100Contract},
 	}
 
 	log.Printf("FilterQuery: %+v", query)
@@ -177,6 +234,7 @@ func main() {
 		log.Fatalf("Failed to subscribe to contract events: %v", err)
 	}
 	log.Println("Listening for Deposit and Withdrawal events...")
+	parsedABI, err := abi.JSON(strings.NewReader(contractABI))
 
 	for {
 		select {
@@ -184,61 +242,95 @@ func main() {
 			log.Printf("Subscription error: %v", err)
 			return
 		case vLog := <-logs:
-			// Identify event type
+
 			event, err := parsedABI.EventByID(vLog.Topics[0])
 			if err != nil {
 				log.Printf("Unknown event: %v", err)
 				continue
 			}
-			data := make(map[string]interface{})
-			err = parsedABI.UnpackIntoMap(data, event.Name, vLog.Data)
-			if err != nil {
-				log.Printf("Failed to unpack event: %v", err)
-				continue
-			}
-			// Add indexed fields
-			for i, input := range event.Inputs {
-				if input.Indexed {
-					if len(vLog.Topics) > i+1 {
-						if input.Type.String() == "address" {
-							data[input.Name] = common.HexToAddress(vLog.Topics[i+1].Hex()).Hex()
-						} else {
-							data[input.Name] = vLog.Topics[i+1].Hex()
-						}
+
+			if event.Name == "Deposit" {
+				data := make(map[string]interface{})
+				err = parsedABI.UnpackIntoMap(data, event.Name, vLog.Data)
+
+				if err != nil {
+					log.Printf("Failed to unpack event: %v", err)
+					continue
+				}
+				// Extract indexed parameters
+				commitment := common.BytesToHash(vLog.Topics[1][:]).Hex()
+				depositor := common.BytesToAddress(vLog.Topics[2][:]).Hex()
+
+				// Extract non-indexed parameters
+				leafIndex := uint32(0)
+				if leafIndexVal, ok := data["leafIndex"].(uint32); ok {
+					leafIndex = leafIndexVal
+				}
+
+				// Extract the timestamp as *big.Int from the event data
+				if timestampVal, ok := data["timestamp"].(*big.Int); ok {
+					// Store in database
+					_, err = queries.CreateDeposit(context.Background(), sqlc.CreateDepositParams{
+						ContractAddress: pgtype.Text{String: vLog.Address.Hex(), Valid: true},
+						Commitment:      pgtype.Text{String: commitment, Valid: true},
+						Depositor:       pgtype.Text{String: depositor, Valid: true},
+						LeafIndex:       pgtype.Int4{Int32: int32(leafIndex), Valid: true},
+						Timestamp:       pgtype.Numeric{Int: timestampVal, Valid: true},
+						TxHash:          pgtype.Text{String: vLog.TxHash.Hex(), Valid: true},
+						BlockNumber:     pgtype.Int4{Int32: int32(vLog.BlockNumber), Valid: true},
+						ChainID:         pgtype.Int4{Int32: int32(2021), Valid: true},
+					})
+					if err != nil {
+						log.Printf("Failed to insert deposit: %v", err)
+					} else {
+						log.Printf("Deposit event stored: commitment=%s, depositor=%s, timestamp=%s, txHash=%s", commitment, depositor, timestampVal.String(), vLog.TxHash.Hex())
 					}
 				}
-			}
-			// Prepare message
-			msg := event.Name + ": "
-			for k, v := range data {
-				msg += k + "=" + toString(v) + ", "
-			}
-			log.Printf("Event: %s", msg)
-			err = producer.Publish(msg)
-			if err != nil {
-				log.Printf("Failed to publish message: %v", err)
+			} else {
+				// Extract indexed parameter
+				relayer := common.BytesToAddress(vLog.Topics[1][:]).Hex()
+
+				// For Withdrawal events, data contains:
+				// [0:32]   - recipient (address)
+				// [32:64]  - nullifierHash (bytes32)
+				// [64:96]  - fee (uint256)
+				if len(vLog.Data) < 96 {
+					log.Printf("Invalid data length for Withdrawal event: %d", len(vLog.Data))
+					continue
+				}
+
+				// Extract recipient (first 32 bytes, but only last 20 bytes are the address)
+				recipient := common.BytesToAddress(vLog.Data[12:32]).Hex()
+
+				// Extract nullifierHash (next 32 bytes)
+				nullifier := "0x" + hex.EncodeToString(vLog.Data[32:64])
+
+				// Extract fee (last 32 bytes)
+				fee := new(big.Int).SetBytes(vLog.Data[64:96])
+
+				log.Printf("Withdrawal data extracted - recipient: %s, nullifier: %s, relayer: %s, fee: %s",
+					recipient, nullifier, relayer, fee.String())
+
+				// Store in database
+				_, err = queries.CreateWithdrawal(context.Background(), sqlc.CreateWithdrawalParams{
+					ContractAddress: pgtype.Text{String: vLog.Address.Hex(), Valid: true},
+					NullifierHash:   pgtype.Text{String: nullifier, Valid: true},
+					Recipient:       pgtype.Text{String: recipient, Valid: true},
+					Relayer:         pgtype.Text{String: relayer, Valid: true},
+					Fee:             pgtype.Numeric{Int: fee, Valid: true},
+					Timestamp:       pgtype.Numeric{Int: big.NewInt(int64(vLog.BlockNumber)), Valid: true},
+					TxHash:          pgtype.Text{String: vLog.TxHash.Hex(), Valid: true},
+					BlockNumber:     pgtype.Int4{Int32: int32(vLog.BlockNumber), Valid: true},
+					ChainID:         pgtype.Int4{Int32: int32(2021), Valid: true},
+				})
+				if err != nil {
+					log.Printf("Failed to insert withdrawal: %v", err)
+				} else {
+					log.Printf("Withdrawal event stored: nullifierHash=%s, recipient=%s, relayer=%s, fee=%s, txHash=%s",
+						nullifier, recipient, relayer, fee.String(), vLog.TxHash.Hex())
+				}
 			}
 		}
-	}
-}
-
-func toString(v interface{}) string {
-	switch val := v.(type) {
-	case string:
-		return val
-	case *big.Int:
-		return val.String()
-	case common.Address:
-		return val.Hex()
-	case [32]byte:
-		return "0x" + hex.EncodeToString(val[:])
-	case uint32:
-		return fmt.Sprintf("%d", val)
-	case uint64:
-		return fmt.Sprintf("%d", val)
-	case int:
-		return fmt.Sprintf("%d", val)
-	default:
-		return "<unknown>"
+		// TODO: push to rabbitmq
 	}
 }

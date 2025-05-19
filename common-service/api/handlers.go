@@ -1,10 +1,11 @@
 package api
 
 import (
+	"log"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
-
-	"common-service/database"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -13,11 +14,11 @@ import (
 
 // Handler struct holds dependencies for API handlers
 type Handler struct {
-	repo *database.Repository
+	repo *sqlc.Repository
 }
 
 // NewHandler creates a new Handler instance
-func NewHandler(repo *database.Repository) *Handler {
+func NewHandler(repo *sqlc.Repository) *Handler {
 	return &Handler{
 		repo: repo,
 	}
@@ -25,14 +26,14 @@ func NewHandler(repo *database.Repository) *Handler {
 
 // KYCRequest represents the request payload for KYC submission
 type KYCRequest struct {
-	CitizenID       string `json:"citizen_id"`
-	FullName        string `json:"full_name"`
-	PhoneNumber     string `json:"phone_number"`
-	DateOfBirth     string `json:"date_of_birth"` // Format: YYYY-MM-DD
-	Nationality     string `json:"nationality"`
-	Verifier        string `json:"verifier,omitempty"`
-	IsActive        bool   `json:"is_active"`
-	KYCVerifiedAt   string `json:"kyc_verified_at,omitempty"` // Format: YYYY-MM-DD HH:MM:SS or empty
+	CitizenID     string `json:"citizen_id"`
+	FullName      string `json:"full_name"`
+	PhoneNumber   string `json:"phone_number"`
+	DateOfBirth   string `json:"date_of_birth"` // Format: YYYY-MM-DD
+	Nationality   string `json:"nationality"`
+	Verifier      string `json:"verifier,omitempty"`
+	IsActive      bool   `json:"is_active"`
+	KYCVerifiedAt string `json:"kyc_verified_at,omitempty"` // Format: YYYY-MM-DD HH:MM:SS or empty
 }
 
 // SubmitKYC handles the submission of KYC information.
@@ -107,6 +108,120 @@ func (h *Handler) UpdateKYC(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "KYC updated successfully"})
+}
+
+// GetEvents handles retrieving events from a specific block
+func (h *Handler) GetEvents(c *gin.Context) {
+	netId := c.Param("netId")
+	contractAddress := c.Param("contractAddress")
+	eventType := c.Param("eventType")
+	fromBlock := c.DefaultQuery("fromBlock", "0")
+	toBlock := c.DefaultQuery("toBlock", "0")
+	limit := c.DefaultQuery("limit", "0")
+
+	// Validate parameters
+	if netId == "" || contractAddress == "" || eventType == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Missing required parameters",
+		})
+		return
+	}
+
+	var events []sqlc.Deposit
+	var err error
+
+	if strings.ToLower(eventType) == "withdrawal" {
+		// TODO: Implement withdrawal event retrieval
+	} else if strings.ToLower(eventType) == "deposit" {
+		events, err = h.repo.GetDepositEventsFromBlockToBlock(c.Request.Context(), netId, contractAddress, fromBlock, toBlock)
+	} else {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid event type",
+		})
+		return
+	}
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to fetch events",
+		})
+		return
+	}
+	// Check if we need to limit the number of events returned
+	limitInt, err := strconv.Atoi(limit)
+	if err != nil {
+		limitInt = 0 // Default to 0 (no limit) if conversion fails
+	}
+
+	var responseEvents []sqlc.Deposit
+	if limitInt > 0 && limitInt < len(events) {
+		responseEvents = events[:limitInt]
+	} else {
+		responseEvents = events
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"events": responseEvents,
+		"count":  len(responseEvents),
+	})
+
+}
+
+func (h *Handler) GetEventByInfo(c *gin.Context) {
+	eventType := c.Param("eventType")
+	hex := c.Param("hex")
+
+	// Validate parameters
+	if eventType == "" || hex == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Missing required parameters",
+		})
+		return
+	}
+
+	if strings.ToLower(eventType) == "withdrawal" {
+		// TODO: Implement withdrawal event retrieval
+		event, err := h.repo.GetWithdrawalByNullifierHash(c.Request.Context(), hex)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Failed to fetch event",
+			})
+			log.Println("error", err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"event": event,
+		})
+	} else if strings.ToLower(eventType) == "deposit" {
+		// TODO: Implement deposit event retrieval
+		event, err := h.repo.GetDepositByCommitment(c.Request.Context(), hex)
+		log.Println("Found deposit event", event)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Failed to fetch event",
+			})
+			log.Println("error", err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"event": event,
+		})
+	}
+}
+
+func (h *Handler) GetLeaves(c *gin.Context) {
+	netId := c.Param("netId")
+	contractAddress := c.Param("contractAddress")
+
+	leaves, err := h.repo.GetLeaves(c.Request.Context(), netId, contractAddress)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to fetch leaves",
+		})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"leaves": leaves})
 }
 
 // MintKYCNFT handles minting an NFT for a user with verified KYC
