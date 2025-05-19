@@ -110,30 +110,40 @@ func (h *Handler) UpdateKYC(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "KYC updated successfully"})
 }
 
+type EventUriParams struct {
+	NetId           string `uri:"netId" binding:"required"`
+	ContractAddress string `uri:"contractAddress" binding:"required"`
+	EventType       string `uri:"eventType" binding:"required,oneof=withdrawal deposit"`
+}
+
+type EventQueryParams struct {
+	FromBlock string `form:"fromBlock" binding:"required"`
+	ToBlock   string `form:"toBlock" binding:"required"`
+	Limit     string `form:"limit" binding:"required"`
+}
+
 // GetEvents handles retrieving events from a specific block
 func (h *Handler) GetEvents(c *gin.Context) {
-	netId := c.Param("netId")
-	contractAddress := c.Param("contractAddress")
-	eventType := c.Param("eventType")
-	fromBlock := c.DefaultQuery("fromBlock", "0")
-	toBlock := c.DefaultQuery("toBlock", "0")
-	limit := c.DefaultQuery("limit", "0")
+	var uriParams EventUriParams
+	var queryParams EventQueryParams
 
-	// Validate parameters
-	if netId == "" || contractAddress == "" || eventType == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Missing required parameters",
-		})
+	if err := c.ShouldBindUri(&uriParams); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := c.ShouldBindQuery(&queryParams); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	var events []sqlc.Deposit
 	var err error
 
-	if strings.ToLower(eventType) == "withdrawal" {
+	if strings.ToLower(uriParams.EventType) == "withdrawal" {
 		// TODO: Implement withdrawal event retrieval
-	} else if strings.ToLower(eventType) == "deposit" {
-		events, err = h.repo.GetDepositEventsFromBlockToBlock(c.Request.Context(), netId, contractAddress, fromBlock, toBlock)
+	} else if strings.ToLower(uriParams.EventType) == "deposit" {
+		events, err = h.repo.GetDepositEventsFromBlockToBlock(c.Request.Context(), uriParams.NetId, uriParams.ContractAddress, queryParams.FromBlock, queryParams.ToBlock)
 	} else {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Invalid event type",
@@ -148,7 +158,7 @@ func (h *Handler) GetEvents(c *gin.Context) {
 		return
 	}
 	// Check if we need to limit the number of events returned
-	limitInt, err := strconv.Atoi(limit)
+	limitInt, err := strconv.Atoi(queryParams.Limit)
 	if err != nil {
 		limitInt = 0 // Default to 0 (no limit) if conversion fails
 	}
@@ -167,21 +177,21 @@ func (h *Handler) GetEvents(c *gin.Context) {
 
 }
 
-func (h *Handler) GetEventByInfo(c *gin.Context) {
-	eventType := c.Param("eventType")
-	hex := c.Param("hex")
+type GetEventByInfoUriParams struct {
+	EventType string `uri:"eventType" binding:"required,oneof=withdrawal deposit"`
+	Hex       string `uri:"hex" binding:"required"`
+}
 
-	// Validate parameters
-	if eventType == "" || hex == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Missing required parameters",
-		})
+func (h *Handler) GetEventByInfo(c *gin.Context) {
+	var uriParams GetEventByInfoUriParams
+	if err := c.ShouldBindUri(&uriParams); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	if strings.ToLower(eventType) == "withdrawal" {
+	if strings.ToLower(uriParams.EventType) == "withdrawal" {
 		// TODO: Implement withdrawal event retrieval
-		event, err := h.repo.GetWithdrawalByNullifierHash(c.Request.Context(), hex)
+		event, err := h.repo.GetWithdrawalByNullifierHash(c.Request.Context(), uriParams.Hex)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error": "Failed to fetch event",
@@ -192,9 +202,9 @@ func (h *Handler) GetEventByInfo(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"event": event,
 		})
-	} else if strings.ToLower(eventType) == "deposit" {
+	} else if strings.ToLower(uriParams.EventType) == "deposit" {
 		// TODO: Implement deposit event retrieval
-		event, err := h.repo.GetDepositByCommitment(c.Request.Context(), hex)
+		event, err := h.repo.GetDepositByCommitment(c.Request.Context(), uriParams.Hex)
 		log.Println("Found deposit event", event)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
@@ -209,11 +219,19 @@ func (h *Handler) GetEventByInfo(c *gin.Context) {
 	}
 }
 
-func (h *Handler) GetLeaves(c *gin.Context) {
-	netId := c.Param("netId")
-	contractAddress := c.Param("contractAddress")
+type GetLeavesUriParams struct {
+	NetId           string `uri:"netId" binding:"required"`
+	ContractAddress string `uri:"contractAddress" binding:"required"`
+}
 
-	leaves, err := h.repo.GetLeaves(c.Request.Context(), netId, contractAddress)
+func (h *Handler) GetLeaves(c *gin.Context) {
+	var uriParams GetLeavesUriParams
+	if err := c.ShouldBindUri(&uriParams); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	leaves, err := h.repo.GetLeaves(c.Request.Context(), uriParams.NetId, uriParams.ContractAddress)
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
