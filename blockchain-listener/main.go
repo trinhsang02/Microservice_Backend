@@ -1,7 +1,6 @@
 package main
 
 import (
-	"blockchain-listener/rabbitmq"
 	"context"
 	"encoding/hex"
 	"fmt"
@@ -19,6 +18,9 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/joho/godotenv"
 	"github.com/yourusername/yourrepo/db/sqlc"
+
+	// "mq/rabbitmq"
+
 )
 
 // ABI for the Deposit and Withdrawal events
@@ -51,16 +53,16 @@ func main() {
 		log.Fatalf("Missing environment variables")
 	}
 
-	if rabbitmqURL == "" {
-		rabbitmqURL = "amqp://guest:guest@rabbitmq:5672/"
-	}
-	queueName := "blockchain_events"
+	// if rabbitmqURL == "" {
+	// 	rabbitmqURL = "amqp://guest:guest@rabbitmq:5672/"
+	// }
+	// queueName := "blockchain_events"
 
-	producer, err := rabbitmq.NewProducer(rabbitmqURL, queueName)
-	if err != nil {
-		log.Fatalf("Failed to initialize RabbitMQ producer: %v", err)
-	}
-	defer producer.Close()
+	// producer, err := rabbitmq.NewProducer(rabbitmqURL, queueName)
+	// if err != nil {
+	// 	log.Fatalf("Failed to initialize RabbitMQ producer: %v", err)
+	// }
+	// defer producer.Close()
 
 	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
 		os.Getenv("DB_USER"),

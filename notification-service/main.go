@@ -2,48 +2,47 @@ package main
 
 import (
 	"log"
-	"os"
+	"time"
 
-	"notification-service/rabbitmq"
+	"github.com/yourusername/yourrepo/mq/rabbitmq"
 )
+
+type DepositNotification struct {
+	DepositID string `json:"deposit_id"`
+	Amount    string `json:"amount"`
+	From      string `json:"from"`
+	To        string `json:"to"`
+}
 
 func main() {
 	// RabbitMQ connection details
-	rabbitmqURL := os.Getenv("RABBITMQ_URL")
-	if rabbitmqURL == "" {
-		rabbitmqURL = "amqp://guest:guest@rabbitmq:5672/"
-	}
-	consumerQueue := "blockchain_events"
-	producerQueue := "relayer_events"
-
-	// Initialize the consumer
-	consumer := &rabbitmq.Consumer{
-		Queue: consumerQueue,
-	}
-	err := consumer.Connect()
-	if err != nil {
-		log.Fatalf("Failed to initialize RabbitMQ consumer: %v", err)
-	}
-	defer consumer.Close()
-
-	// Initialize the producer
-	producer, err := rabbitmq.NewProducer(rabbitmqURL, producerQueue)
+	log.Println("Connecting to RabbitMQ...")
+	producer, err := rabbitmq.NewProducer("amqp://guest:guest@rabbitmq:5672/", "relayer_exchange", "topic")
 	if err != nil {
 		log.Fatalf("Failed to initialize RabbitMQ producer: %v", err)
 	}
 	defer producer.Close()
+	log.Println("Successfully connected to RabbitMQ")
 
-	// Start consuming messages
-	log.Println("Notification Service is consuming messages from blockchain_events...")
-	err = consumer.Consume(func(message string) {
-		log.Printf("Consumed message: %s", message)
-		// Process the message and publish to relayer_events
-		err := producer.Publish("Relayer event processed: " + message)
-		if err != nil {
-			log.Printf("Failed to publish message to relayer_events: %v", err)
-		}
-	})
+	// Create a notification
+	notification := DepositNotification{
+		DepositID: "123",
+		Amount:    "100",
+		From:      "0x123",
+		To:        "0x456",
+	}
+
+	// Publish the notification
+	log.Printf("Publishing notification to exchange 'relayer_exchange' with routing key 'relayer.deposit'")
+	err = producer.PublishStruct("relayer.deposit", notification)
 	if err != nil {
-		log.Printf("Failed to consume messages: %v", err)
+		log.Fatalf("Failed to publish notification: %v", err)
+	}
+
+	log.Println("Successfully published notification")
+
+	// Keep the service running
+	for {
+		time.Sleep(time.Second)
 	}
 }

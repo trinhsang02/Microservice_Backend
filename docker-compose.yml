@@ -8,6 +8,11 @@ services:
       - "5672:5672" # RabbitMQ main port
     networks:
       - microservices-network
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "check_port_connectivity" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
   blockchain-listener:
     build:
@@ -19,33 +24,38 @@ services:
     networks:
       - microservices-network
     depends_on:
-      - rabbitmq
+      rabbitmq:
+        condition: service_healthy
     environment:
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
 
   notification-service:
     build:
-      context: ./notification-service
+      context: .
+      dockerfile: ./notification-service/Dockerfile
     ports:
       - "8082:8082"
       - "50052:50052" # gRPC port
     networks:
       - microservices-network
     depends_on:
-      - rabbitmq
+      rabbitmq:
+        condition: service_healthy
     environment:
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
 
   relayer-service:
     build:
-      context: ./relayer-service
+      context: .
+      dockerfile: ./relayer-service/Dockerfile
     ports:
       - "8083:8083"
       - "50053:50053" # gRPC port
     networks:
       - microservices-network
     depends_on:
-      - rabbitmq
+      rabbitmq:
+        condition: service_healthy
     environment:
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
 

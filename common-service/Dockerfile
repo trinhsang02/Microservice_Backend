@@ -1,20 +1,22 @@
-# Build stage
-FROM golang:1.23 
+# Use an official Golang runtime as a parent image
+FROM golang:1.24
 
+# Set the Current Working Directory inside the container
 WORKDIR /app
 
-# Copy only the needed folders
+# Copy the source code into the container
 COPY common-service/ ./common-service/
 COPY db/ ./db/
 
-# Set the working directory to the service
+# Set working directory to the service
 WORKDIR /app/common-service
 
-# Build the service
+# Build the Go app
 RUN go build -o common-service .
-# Expose port
+
+# Expose the ports that the app will run on
 EXPOSE 8080
 
-# Run the application
+# Command to run the executable
 CMD ["./common-service"]
 
