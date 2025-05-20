@@ -1,6 +1,22 @@
 version: "3.8"
 
 services:
+  postgres:
+    image: "postgres:16-alpine"
+    environment:
+      - POSTGRES_USER=root
+      - POSTGRES_PASSWORD=cyclone
+      - POSTGRES_DB=cyclone
+    networks:
+      - microservices-network
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "root", "-d", "cyclone"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432"
+
   rabbitmq:
     image: "rabbitmq:3-management"
     ports:
@@ -26,8 +42,11 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
     environment:
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - DB_HOST=postgres
 
   # notification-service:
   #   build:
@@ -65,6 +84,31 @@ services:
       dockerfile: ./common-service/Dockerfile
     ports:
       - "8080:8080"
+    environment:
+      - DB_HOST=postgres
+    networks:
+      - microservices-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  migrate:
+    image: migrate/migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    volumes:
+      - ./db/migration:/migrations
+    entrypoint:
+      [
+        "migrate",
+        "-path",
+        "/migrations",
+        "-database",
+        "postgresql://root:cyclone@postgres:5432/cyclone?sslmode=disable",
+        "up",
+      ]
     networks:
       - microservices-network
 

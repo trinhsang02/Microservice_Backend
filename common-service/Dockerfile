@@ -1,8 +1,9 @@
-# Use an official Golang runtime as a parent image
-FROM golang:1.24
+# Build stage
+FROM golang:1.23-alpine AS builder
 
 # Set the Current Working Directory inside the container
 WORKDIR /app
+RUN apk add --no-cache git
 
 # Copy the source code into the container
 COPY common-service/ ./common-service/
@@ -14,9 +15,11 @@ WORKDIR /app/common-service
 # Build the Go app
 RUN go build -o common-service .
 
-# Expose the ports that the app will run on
+# Final stage
+FROM alpine:latest
+WORKDIR /app
+COPY --from=builder /app/common-service/common-service .
+COPY --from=builder /app/common-service/.env .env
 EXPOSE 8080
-
-# Command to run the executable
 CMD ["./common-service"]
 
