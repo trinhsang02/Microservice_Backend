@@ -1,5 +1,5 @@
 # Use an official Golang runtime as a parent image
-FROM golang:1.23
+FROM golang:1.24.1
 
 # Set the working directory for the build
 WORKDIR /app
@@ -7,6 +7,7 @@ WORKDIR /app
 # Copy only the needed folders
 COPY blockchain-listener/ ./blockchain-listener/
 COPY db/ ./db/
+COPY mq/ ./mq/
 
 # Set the working directory to the service
 WORKDIR /app/blockchain-listener

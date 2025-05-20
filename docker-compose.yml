@@ -29,35 +29,35 @@ services:
     environment:
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
 
-  notification-service:
-    build:
-      context: .
-      dockerfile: ./notification-service/Dockerfile
-    ports:
-      - "8082:8082"
-      - "50052:50052" # gRPC port
-    networks:
-      - microservices-network
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-    environment:
-      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+  # notification-service:
+  #   build:
+  #     context: .
+  #     dockerfile: ./notification-service/Dockerfile
+  #   ports:
+  #     - "8082:8082"
+  #     - "50052:50052" # gRPC port
+  #   networks:
+  #     - microservices-network
+  #   depends_on:
+  #     rabbitmq:
+  #       condition: service_healthy
+  #   environment:
+  #     - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
 
-  relayer-service:
-    build:
-      context: .
-      dockerfile: ./relayer-service/Dockerfile
-    ports:
-      - "8083:8083"
-      - "50053:50053" # gRPC port
-    networks:
-      - microservices-network
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-    environment:
-      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+  # relayer-service:
+  #   build:
+  #     context: .
+  #     dockerfile: ./relayer-service/Dockerfile
+  #   ports:
+  #     - "8083:8083"
+  #     - "50053:50053" # gRPC port
+  #   networks:
+  #     - microservices-network
+  #   depends_on:
+  #     rabbitmq:
+  #       condition: service_healthy
+  #   environment:
+  #     - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
 
   common-service:
     build:
