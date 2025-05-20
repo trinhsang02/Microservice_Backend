@@ -4,7 +4,7 @@ import (
 	"log"
 	"os"
 
-	"relayer-service/rabbitmq"
+	"github.com/yourusername/yourrepo/mq/rabbitmq"
 )
 
 func main() {
@@ -15,26 +15,21 @@ func main() {
 	}
 	queueName := "relayer_events"
 
+	log.Printf("Connecting to RabbitMQ at %s", rabbitmqURL)
+	log.Printf("Using queue: %s", queueName)
+
 	// Initialize the consumer
-	consumer := &rabbitmq.Consumer{
-		Queue: queueName,
-	}
-	err := consumer.Connect(rabbitmqURL)
+	consumer, err := rabbitmq.NewConsumer(rabbitmqURL, "relayer_exchange", "topic", queueName, []string{"relayer.*"})
 	if err != nil {
 		log.Fatalf("Failed to initialize RabbitMQ consumer: %v", err)
 	}
 	defer consumer.Close()
-	err = consumer.Consume(func(message string) {
-		log.Printf("Consumed message: %s", message)
-		// Process the message here
-	})
-	if err != nil {
-		log.Fatalf("Failed to consume messages: %v", err) // Use log.Fatalf to terminate with an error message
-	}
+
 	// Start consuming messages
 	log.Println("Relayer Service is consuming messages from relayer_events...")
-	err = consumer.Consume(func(message string) {
-		log.Printf("Consumed message: %s", message)
+	err = consumer.Consume(func(message rabbitmq.MQMessage) {
+		log.Printf("Received message type: %s", message.Type)
+		log.Printf("Received message data: %+v", message.Data)
 		// Process the message here
 	})
 	if err != nil {
