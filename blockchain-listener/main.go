@@ -28,26 +28,6 @@ const contractABI = `[
   {"anonymous":false,"inputs":[{"indexed":false,"internalType":"address","name":"to","type":"address"},{"indexed":false,"internalType":"bytes32","name":"nullifierHash","type":"bytes32"},{"indexed":true,"internalType":"address","name":"relayer","type":"address"},{"indexed":false,"internalType":"uint256","name":"fee","type":"uint256"}],"name":"Withdrawal","type":"event"}
 ]`
 
-type DepositNotification struct {
-	Commitment  string
-	Depositor   string
-	LeafIndex   uint32
-	Timestamp   *big.Int
-	TxHash      string
-	BlockNumber uint64
-	ChainID     int32
-}
-
-type WithdrawNotification struct {
-	NullifierHash string
-	Recipient     string
-	Relayer       string
-	Fee           string
-	TxHash        string
-	BlockNumber   uint64
-	ChainID       int32
-}
-
 func main() {
 	// Load .env file
 	if err := godotenv.Load(); err != nil {
@@ -71,14 +51,14 @@ func main() {
 
 	// 	// Test publish
 	// 	log.Printf("Testing message publish...")
-	// 	err = testProducer.PublishStruct("listener.deposit", DepositNotification{
-	// 		Commitment:  "0x123",
-	// 		Depositor:   "0x456",
-	// 		LeafIndex:   0,
-	// 		Timestamp:   big.NewInt(1643723400),
-	// 		TxHash:      "0x789",
-	// 		BlockNumber: 123456,
-	// 		ChainID:     int32(2021),
+	// 	err = testProducer.PublishStruct("listener.deposit", models.Deposit{
+	// 		Commitment:  pgtype.Text{String: "0x123", Valid: true},
+	// 		Depositor:   pgtype.Text{String: "0x456", Valid: true},
+	// 		LeafIndex:   pgtype.Int4{Int32: 0, Valid: true},
+	// 		Timestamp:   pgtype.Numeric{Int: big.NewInt(1643723400), Valid: true},
+	// 		TxHash:      pgtype.Text{String: "0x789", Valid: true},
+	// 		BlockNumber: pgtype.Int4{Int32: 123456, Valid: true},
+	// 		ChainID:     pgtype.Int4{Int32: 2021, Valid: true},
 	// 	})
 	// 	if err != nil {
 	// 		log.Printf("Failed to publish test message: %v", err)
@@ -223,14 +203,14 @@ func main() {
 					defer depositProducer.Close()
 
 					log.Printf("Attempting to publish deposit notification...")
-					err = depositProducer.PublishStruct("listener.deposit", DepositNotification{
-						Commitment:  commitment,
-						Depositor:   depositor,
-						LeafIndex:   leafIndex,
-						Timestamp:   timestampVal,
-						TxHash:      vLog.TxHash.Hex(),
-						BlockNumber: vLog.BlockNumber,
-						ChainID:     int32(2021),
+					err = depositProducer.PublishStruct("listener.deposit", sqlc.Deposit{
+						Commitment:  pgtype.Text{String: commitment, Valid: true},
+						Depositor:   pgtype.Text{String: depositor, Valid: true},
+						LeafIndex:   pgtype.Int4{Int32: int32(leafIndex), Valid: true},
+						Timestamp:   pgtype.Numeric{Int: timestampVal, Valid: true},
+						TxHash:      pgtype.Text{String: vLog.TxHash.Hex(), Valid: true},
+						BlockNumber: pgtype.Int4{Int32: int32(vLog.BlockNumber), Valid: true},
+						ChainID:     pgtype.Int4{Int32: 2021, Valid: true},
 					})
 					if err != nil {
 						log.Printf("Failed to publish deposit notification: %v", err)
@@ -280,6 +260,34 @@ func main() {
 				} else {
 					log.Printf("Withdrawal event stored: nullifierHash=%s, recipient=%s, relayer=%s, fee=%s, txHash=%s",
 						nullifier, recipient, relayer, fee.String(), vLog.TxHash.Hex())
+				}
+
+				// Publish to RabbitMQ
+				log.Printf("Attempting to create RabbitMQ producer for withdrawal...")
+				withdrawProducer, err := rabbitmq.NewProducer(rabbitmqURL, "blockchain_exchange", "topic")
+				if err != nil {
+					log.Printf("Failed to initialize withdrawal RabbitMQ producer: %v", err)
+				} else {
+					log.Printf("Successfully created RabbitMQ producer for withdrawal")
+				}
+				defer withdrawProducer.Close()
+
+				log.Printf("Attempting to publish withdrawal notification...")
+				err = withdrawProducer.PublishStruct("listener.withdraw", sqlc.Withdrawal{
+					ContractAddress: pgtype.Text{String: vLog.Address.Hex(), Valid: true},
+					NullifierHash:   pgtype.Text{String: nullifier, Valid: true},
+					Recipient:       pgtype.Text{String: recipient, Valid: true},
+					Relayer:         pgtype.Text{String: relayer, Valid: true},
+					Fee:             pgtype.Numeric{Int: fee, Valid: true},
+					Timestamp:       pgtype.Numeric{Int: big.NewInt(int64(vLog.BlockNumber)), Valid: true},
+					TxHash:          pgtype.Text{String: vLog.TxHash.Hex(), Valid: true},
+					BlockNumber:     pgtype.Int4{Int32: int32(vLog.BlockNumber), Valid: true},
+					ChainID:         pgtype.Int4{Int32: 2021, Valid: true},
+				})
+				if err != nil {
+					log.Printf("Failed to publish withdrawal notification: %v", err)
+				} else {
+					log.Printf("Successfully published withdrawal notification")
 				}
 			}
 		}
@@ -360,14 +368,14 @@ func main() {
 						defer depositProducer.Close()
 
 						log.Printf("Attempting to publish deposit notification...")
-						err = depositProducer.PublishStruct("listener.deposit", DepositNotification{
-							Commitment:  commitment,
-							Depositor:   depositor,
-							LeafIndex:   leafIndex,
-							Timestamp:   timestampVal,
-							TxHash:      vLog.TxHash.Hex(),
-							BlockNumber: vLog.BlockNumber,
-							ChainID:     int32(2021),
+						err = depositProducer.PublishStruct("listener.deposit", sqlc.Deposit{
+							Commitment:  pgtype.Text{String: commitment, Valid: true},
+							Depositor:   pgtype.Text{String: depositor, Valid: true},
+							LeafIndex:   pgtype.Int4{Int32: int32(leafIndex), Valid: true},
+							Timestamp:   pgtype.Numeric{Int: timestampVal, Valid: true},
+							TxHash:      pgtype.Text{String: vLog.TxHash.Hex(), Valid: true},
+							BlockNumber: pgtype.Int4{Int32: int32(vLog.BlockNumber), Valid: true},
+							ChainID:     pgtype.Int4{Int32: 2021, Valid: true},
 						})
 						if err != nil {
 							log.Printf("Failed to publish deposit notification: %v", err)
@@ -439,13 +447,13 @@ func main() {
 			switch msg.Type {
 			case "listener.deposit":
 				// Xử lý deposit
-				var deposit DepositNotification
+				var deposit sqlc.Deposit
 				b, _ := json.Marshal(msg.Data)
 				_ = json.Unmarshal(b, &deposit)
 				log.Printf("Received deposit: %+v", deposit)
 			case "listener.withdraw":
 				// Xử lý withdraw
-				var withdraw WithdrawNotification
+				var withdraw sqlc.Withdrawal
 				b, _ := json.Marshal(msg.Data)
 				_ = json.Unmarshal(b, &withdraw)
 				log.Printf("Received withdraw: %+v", withdraw)
