@@ -162,8 +162,7 @@ func main() {
 
 				// Extract the timestamp as *big.Int from the event data
 				if timestampVal, ok := data["timestamp"].(*big.Int); ok {
-					// Store in database
-					_, err = queries.CreateDeposit(context.Background(), sqlc.CreateDepositParams{
+					deposit, err := queries.CreateDeposit(context.Background(), sqlc.CreateDepositParams{
 						ContractAddress: pgtype.Text{String: vLog.Address.Hex(), Valid: true},
 						Commitment:      pgtype.Text{String: commitment, Valid: true},
 						Depositor:       pgtype.Text{String: depositor, Valid: true},
@@ -176,7 +175,9 @@ func main() {
 					if err != nil {
 						log.Printf("Failed to insert deposit: %v", err)
 					} else {
-						log.Printf("Deposit event stored: commitment=%s, depositor=%s, timestamp=%s, txHash=%s", commitment, depositor, timestampVal.String(), vLog.TxHash.Hex())
+						if deposit.ID != 0 {
+							log.Printf("Deposit event stored: commitment=%s, depositor=%s, timestamp=%s, txHash=%s", commitment, depositor, timestampVal.String(), vLog.TxHash.Hex())
+						}
 					}
 				}
 			} else {
@@ -205,7 +206,7 @@ func main() {
 					recipient, nullifier, relayer, fee.String())
 
 				// Store in database
-				_, err = queries.CreateWithdrawal(context.Background(), sqlc.CreateWithdrawalParams{
+				withdrawal, err := queries.CreateWithdrawal(context.Background(), sqlc.CreateWithdrawalParams{
 					ContractAddress: pgtype.Text{String: vLog.Address.Hex(), Valid: true},
 					NullifierHash:   pgtype.Text{String: nullifier, Valid: true},
 					Recipient:       pgtype.Text{String: recipient, Valid: true},
@@ -219,8 +220,10 @@ func main() {
 				if err != nil {
 					log.Printf("Failed to insert withdrawal: %v", err)
 				} else {
-					log.Printf("Withdrawal event stored: nullifierHash=%s, recipient=%s, relayer=%s, fee=%s, txHash=%s",
-						nullifier, recipient, relayer, fee.String(), vLog.TxHash.Hex())
+					if withdrawal.ID != 0 {
+						log.Printf("Withdrawal event stored: nullifierHash=%s, recipient=%s, relayer=%s, fee=%s, txHash=%s",
+							nullifier, recipient, relayer, fee.String(), vLog.TxHash.Hex())
+					}
 				}
 			}
 		}
