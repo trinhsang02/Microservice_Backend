@@ -1,7 +1,9 @@
 
 -- name: CreateDeposit :one
 INSERT INTO deposits (contract_address, commitment, depositor, leaf_index, tx_hash, timestamp, block_number, chain_id) 
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *;
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (commitment) DO NOTHING
+RETURNING *;
 
 -- name: GetDepositsFromBlockToBlock :many
 SELECT * FROM deposits 

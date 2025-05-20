@@ -7,7 +7,8 @@ CREATE TABLE IF NOT EXISTS deposits (
     tx_hash VARCHAR(255),
     timestamp NUMERIC,
     block_number INT,
-    chain_id INT
+    chain_id INT,
+    UNIQUE (commitment)
 );
 
 CREATE TABLE IF NOT EXISTS withdrawals (
@@ -20,7 +21,8 @@ CREATE TABLE IF NOT EXISTS withdrawals (
     tx_hash VARCHAR(255),
     timestamp NUMERIC,
     block_number INT,
-    chain_id INT
+    chain_id INT,
+    UNIQUE (nullifier_hash)
 );
 
 CREATE TABLE IF NOT EXISTS kyc_info (
@@ -40,3 +42,7 @@ CREATE TABLE IF NOT EXISTS wallet_info (
     wallet_signature VARCHAR(255), -- sign on citizen_id
     created_at TIMESTAMP NOT NULL DEFAULT (now())
 );
+
+CREATE INDEX IF NOT EXISTS contract_address_chain_id_index ON deposits (contract_address, chain_id);
+CREATE INDEX IF NOT EXISTS citizen_id_index ON kyc_info (citizen_id);
+

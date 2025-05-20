@@ -1,7 +1,9 @@
 
 -- name: CreateWithdrawal :one
 INSERT INTO withdrawals (contract_address, recipient, nullifier_hash, relayer, fee, tx_hash, timestamp, block_number, chain_id) 
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *;
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+ON CONFLICT (nullifier_hash) DO NOTHING
+RETURNING *;
 
 -- name: GetAllWithdrawalsOfContract :many
 SELECT * FROM withdrawals WHERE contract_address = $1
