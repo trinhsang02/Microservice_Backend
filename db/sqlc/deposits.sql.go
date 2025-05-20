@@ -80,7 +80,7 @@ SELECT id, contract_address, commitment, depositor, leaf_index, tx_hash, timesta
 WHERE contract_address = $1
 AND chain_id = $2
 AND block_number BETWEEN $3 AND $4
-ORDER BY block_number ASC
+ORDER BY block_number DESC
 `
 
 type GetDepositsFromBlockToBlockParams struct {

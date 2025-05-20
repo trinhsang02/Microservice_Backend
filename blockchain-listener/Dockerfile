@@ -1,8 +1,8 @@
-# Use an official Golang runtime as a parent image
-FROM golang:1.23
+# Build stage
+FROM golang:1.23-alpine AS builder
 
-# Set the working directory for the build
 WORKDIR /app
+RUN apk add --no-cache git
 
 # Copy only the needed folders
 COPY blockchain-listener/ ./blockchain-listener/
@@ -14,9 +14,11 @@ WORKDIR /app/blockchain-listener
 # Build the service
 RUN go build -o blockchain-listener .
 
-# Expose the ports that the app will run on
+# Final stage
+FROM alpine:latest
+WORKDIR /app
+COPY --from=builder /app/blockchain-listener/blockchain-listener .
+COPY --from=builder /app/blockchain-listener/.env .env
 EXPOSE 8081
 EXPOSE 50051
-
-# Command to run the executable
 CMD ["./blockchain-listener"]
