@@ -190,7 +190,6 @@ func (h *Handler) GetEventByInfo(c *gin.Context) {
 	}
 
 	if strings.ToLower(uriParams.EventType) == "withdrawal" {
-		// TODO: Implement withdrawal event retrieval
 		event, err := h.repo.GetWithdrawalByNullifierHash(c.Request.Context(), uriParams.Hex)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
@@ -203,7 +202,6 @@ func (h *Handler) GetEventByInfo(c *gin.Context) {
 			"event": event,
 		})
 	} else if strings.ToLower(uriParams.EventType) == "deposit" {
-		// TODO: Implement deposit event retrieval
 		event, err := h.repo.GetDepositByCommitment(c.Request.Context(), uriParams.Hex)
 		log.Println("Found deposit event", event)
 		if err != nil {

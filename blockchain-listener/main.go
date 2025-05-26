@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"encoding/hex"
-	"encoding/json"
+	// "encoding/json"
 	"fmt"
 	"log"
 	"math/big"
@@ -20,7 +20,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/joho/godotenv"
 	"github.com/yourusername/yourrepo/db/sqlc"
-	"github.com/yourusername/yourrepo/mq/rabbitmq"
+	// "github.com/yourusername/yourrepo/mq/rabbitmq"
 )
 
 // ABI for the Deposit and Withdrawal events
@@ -49,7 +49,7 @@ func main() {
 	log.Printf("Mixer 100 Address: %s", mixer_100)
 	log.Printf("RPC URL: %s", rpcURL)
 
-	// // Test RabbitMQ connection
+	// Test RabbitMQ connection
 	// log.Printf("Testing RabbitMQ connection...")
 	// testProducer, err := rabbitmq.NewProducer(rabbitmqURL, "blockchain_exchange", "topic")
 	// if err != nil {
@@ -179,8 +179,7 @@ func main() {
 
 					// Extract the timestamp as *big.Int from the event data
 					if timestampVal, ok := data["timestamp"].(*big.Int); ok {
-						// Store in database
-						_, err = queries.CreateDeposit(context.Background(), sqlc.CreateDepositParams{
+						deposit, err := queries.CreateDeposit(context.Background(), sqlc.CreateDepositParams{
 							ContractAddress: pgtype.Text{String: vLog.Address.Hex(), Valid: true},
 							Commitment:      pgtype.Text{String: commitment, Valid: true},
 							Depositor:       pgtype.Text{String: depositor, Valid: true},
@@ -193,33 +192,9 @@ func main() {
 						if err != nil {
 							log.Printf("Failed to insert deposit: %v", err)
 						} else {
-							log.Printf("Deposit event stored: commitment=%s, depositor=%s, timestamp=%s, txHash=%s", commitment, depositor, timestampVal.String(), vLog.TxHash.Hex())
-						}
-
-						// Publish to RabbitMQ
-						log.Printf("Attempting to create RabbitMQ producer...")
-						depositProducer, err := rabbitmq.NewProducer(rabbitmqURL, "blockchain_exchange", "topic")
-						if err != nil {
-							log.Printf("Failed to initialize deposit RabbitMQ producer: %v", err)
-						} else {
-							log.Printf("Successfully created RabbitMQ producer")
-						}
-						defer depositProducer.Close()
-
-						log.Printf("Attempting to publish deposit notification...")
-						err = depositProducer.PublishStruct("listener.deposit", sqlc.Deposit{
-							Commitment:  pgtype.Text{String: commitment, Valid: true},
-							Depositor:   pgtype.Text{String: depositor, Valid: true},
-							LeafIndex:   pgtype.Int4{Int32: int32(leafIndex), Valid: true},
-							Timestamp:   pgtype.Numeric{Int: timestampVal, Valid: true},
-							TxHash:      pgtype.Text{String: vLog.TxHash.Hex(), Valid: true},
-							BlockNumber: pgtype.Int4{Int32: int32(vLog.BlockNumber), Valid: true},
-							ChainID:     pgtype.Int4{Int32: 2021, Valid: true},
-						})
-						if err != nil {
-							log.Printf("Failed to publish deposit notification: %v", err)
-						} else {
-							log.Printf("Successfully published deposit notification")
+							if deposit.ID != 0 {
+								log.Printf("Deposit event stored: commitment=%s, depositor=%s, timestamp=%s, txHash=%s", commitment, depositor, timestampVal.String(), vLog.TxHash.Hex())
+							}
 						}
 					}
 				} else {
@@ -248,7 +223,7 @@ func main() {
 						recipient, nullifier, relayer, fee.String())
 
 					// Store in database
-					_, err = queries.CreateWithdrawal(context.Background(), sqlc.CreateWithdrawalParams{
+					withdrawal, err := queries.CreateWithdrawal(context.Background(), sqlc.CreateWithdrawalParams{
 						ContractAddress: pgtype.Text{String: vLog.Address.Hex(), Valid: true},
 						NullifierHash:   pgtype.Text{String: nullifier, Valid: true},
 						Recipient:       pgtype.Text{String: recipient, Valid: true},
@@ -262,48 +237,48 @@ func main() {
 					if err != nil {
 						log.Printf("Failed to insert withdrawal: %v", err)
 					} else {
-						log.Printf("Withdrawal event stored: nullifierHash=%s, recipient=%s, relayer=%s, fee=%s, txHash=%s",
-							nullifier, recipient, relayer, fee.String(), vLog.TxHash.Hex())
+						if withdrawal.ID != 0 {
+							log.Printf("Withdrawal event stored: nullifierHash=%s, recipient=%s, relayer=%s, fee=%s, txHash=%s",
+								nullifier, recipient, relayer, fee.String(), vLog.TxHash.Hex())
+						}
 					}
 				}
 			}
 			// TODO: push to rabbitmq
 
-		}
-	}
+			// log.Printf("Setting up RabbitMQ consumer...")
+			// consumer, err := rabbitmq.NewConsumer(rabbitmqURL, "blockchain_exchange", "topic", "blockchain_listener_queue", []string{"listener.*"})
+			// if err != nil {
+			// 	log.Printf("Failed to initialize RabbitMQ consumer: %v", err)
+			// } else {
+			// 	log.Printf("Successfully set up RabbitMQ consumer")
+			// 	defer consumer.Close()
 
-	//Consume messages from RabbitMQ
-	log.Printf("Setting up RabbitMQ consumer...")
-	consumer, err := rabbitmq.NewConsumer(rabbitmqURL, "blockchain_exchange", "topic", "blockchain_listener_queue", []string{"listener.*"})
-	if err != nil {
-		log.Printf("Failed to initialize RabbitMQ consumer: %v", err)
-	} else {
-		log.Printf("Successfully set up RabbitMQ consumer")
-		defer consumer.Close()
-
-		err = consumer.Consume(func(msg rabbitmq.MQMessage) {
-			log.Printf("Received message of type: %s", msg.Type)
-			switch msg.Type {
-			case "listener.deposit":
-				// Xử lý deposit
-				var deposit sqlc.Deposit
-				b, _ := json.Marshal(msg.Data)
-				_ = json.Unmarshal(b, &deposit)
-				log.Printf("Received deposit: %+v", deposit)
-			case "listener.withdraw":
-				// Xử lý withdraw
-				var withdraw sqlc.Withdrawal
-				b, _ := json.Marshal(msg.Data)
-				_ = json.Unmarshal(b, &withdraw)
-				log.Printf("Received withdraw: %+v", withdraw)
-			default:
-				log.Printf("Unknown message type: %s", msg.Type)
-			}
-		})
-		if err != nil {
-			log.Printf("Failed to consume messages: %v", err)
-		} else {
-			log.Printf("Successfully started consuming messages")
+			// 	err = consumer.Consume(func(msg rabbitmq.MQMessage) {
+			// 		log.Printf("Received message of type: %s", msg.Type)
+			// 		switch msg.Type {
+			// 		case "listener.deposit":
+			// 			// Xử lý deposit
+			// 			var deposit sqlc.Deposit
+			// 			b, _ := json.Marshal(msg.Data)
+			// 			_ = json.Unmarshal(b, &deposit)
+			// 			log.Printf("Received deposit: %+v", deposit)
+			// 		case "listener.withdraw":
+			// 			// Xử lý withdraw
+			// 			var withdraw sqlc.Withdrawal
+			// 			b, _ := json.Marshal(msg.Data)
+			// 			_ = json.Unmarshal(b, &withdraw)
+			// 			log.Printf("Received withdraw: %+v", withdraw)
+			// 		default:
+			// 			log.Printf("Unknown message type: %s", msg.Type)
+			// 		}
+			// 	})
+			// 	if err != nil {
+			// 		log.Printf("Failed to consume messages: %v", err)
+			// 	} else {
+			// 		log.Printf("Successfully started consuming messages")
+			// 	}
+			// }
 		}
 	}
 }
