@@ -1,17 +1,18 @@
 # Build stage
 FROM golang:1.23-alpine AS builder
 
+# Set the Current Working Directory inside the container
 WORKDIR /app
 RUN apk add --no-cache git
 
-# Copy only the needed folders
+# Copy the source code into the container
 COPY common-service/ ./common-service/
 COPY db/ ./db/
 
-# Set the working directory to the service
+# Set working directory to the service
 WORKDIR /app/common-service
 
-# Build the service
+# Build the Go app
 RUN go build -o common-service .
 
 # Final stage
