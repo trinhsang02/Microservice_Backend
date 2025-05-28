@@ -10,12 +10,12 @@ services:
     networks:
       - microservices-network
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "root", "-d", "cyclone"]
+      test: [ "CMD", "pg_isready", "-U", "root", "-d", "cyclone" ]
       interval: 10s
       timeout: 5s
       retries: 5
     ports:
-      - "5432:5432"
+      - "5433:5432"
 
   rabbitmq:
     image: "rabbitmq:3-management"
@@ -100,15 +100,7 @@ services:
 
     volumes:
       - ./db/migration:/migrations
-    entrypoint:
-      [
-        "migrate",
-        "-path",
-        "/migrations",
-        "-database",
-        "postgresql://root:cyclone@postgres:5432/cyclone?sslmode=disable",
-        "up",
-      ]
+    entrypoint: [ "migrate", "-path", "/migrations", "-database", "postgresql://root:cyclone@postgres:5432/cyclone?sslmode=disable", "up" ]
     networks:
       - microservices-network
 

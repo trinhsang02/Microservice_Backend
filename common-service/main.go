@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	"github.com/yourusername/yourrepo/db/sqlc"
+	"github.com/yourusername/yourrepo/mq/rabbitmq"
 )
 
 func checkDatabaseConnection(pool *pgxpool.Pool) error {
@@ -62,11 +63,24 @@ func main() {
 	// Initialize queries and repository
 	repo := sqlc.NewRepository(sqlc.New(pool))
 
-	// Initialize API handler
-	handler := api.NewHandler(repo)
+	// Initialize RabbitMQ producer
+	producer, err := rabbitmq.NewProducer(os.Getenv("RABBITMQ_URL"), "kyc-mint-exchange", "topic")
+	if err != nil {
+		log.Fatalf("Failed to create RabbitMQ producer: %v", err)
+	}
+	defer producer.Close()
+
+	// Initialize handler with producer
+	handler := api.NewHandler(repo, producer)
 
 	// Setup router
 	router := api.SetupRouter(handler)
+
+	// Start mint worker in a goroutine
+	go func() {
+		log.Println("Starting mint worker...")
+		StartMintWorker(repo, os.Getenv("RABBITMQ_URL"))
+	}()
 
 	// Start server
 	log.Println("Server starting on :8080")

@@ -13,6 +13,7 @@ import (
 type Querier interface {
 	CreateDeposit(ctx context.Context, arg CreateDepositParams) (Deposit, error)
 	CreateKycInfo(ctx context.Context, arg CreateKycInfoParams) (KycInfo, error)
+	CreateWalletInfo(ctx context.Context, arg CreateWalletInfoParams) (WalletInfo, error)
 	CreateWithdrawal(ctx context.Context, arg CreateWithdrawalParams) (Withdrawal, error)
 	GetAllWithdrawalsOfContract(ctx context.Context, contractAddress pgtype.Text) ([]Withdrawal, error)
 	GetAllWithdrawalsOfRecipient(ctx context.Context, recipient pgtype.Text) ([]Withdrawal, error)
