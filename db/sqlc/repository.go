@@ -18,8 +18,9 @@ func NewRepository(queries *Queries) *Repository {
 	return &Repository{queries: queries}
 }
 
-// SubmitKYC inserts a new KYC record.
-func (r *Repository) SubmitKYC(ctx context.Context, kyc KycInfo) error {
+// SubmitKYC inserts a new KYC record and associated wallet info.
+func (r *Repository) SubmitKYC(ctx context.Context, kyc KycInfo, walletAddress string, walletSignature string) error {
+	// Create KYC record
 	_, err := r.queries.CreateKycInfo(ctx, CreateKycInfoParams{
 		CitizenID:     kyc.CitizenID,
 		FullName:      pgtype.Text{String: kyc.FullName.String, Valid: true},
@@ -29,6 +30,16 @@ func (r *Repository) SubmitKYC(ctx context.Context, kyc KycInfo) error {
 		Verifier:      pgtype.Text{String: kyc.Verifier.String, Valid: true},
 		IsActive:      pgtype.Bool{Bool: kyc.IsActive.Bool, Valid: true},
 		KycVerifiedAt: pgtype.Timestamp{Time: time.Now(), Valid: true},
+	})
+	if err != nil {
+		return err
+	}
+
+	// Create or update wallet info
+	err = r.queries.CreateOrUpdateWalletInfo(ctx, CreateOrUpdateWalletInfoParams{
+		WalletAddress:   walletAddress,
+		CitizenID:       pgtype.Text{String: kyc.CitizenID, Valid: true},
+		WalletSignature: pgtype.Text{String: walletSignature, Valid: true},
 	})
 	return err
 }
