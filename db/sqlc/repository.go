@@ -3,7 +3,6 @@ package sqlc
 import (
 	"context"
 	"strconv"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -18,17 +17,28 @@ func NewRepository(queries *Queries) *Repository {
 	return &Repository{queries: queries}
 }
 
-// SubmitKYC inserts a new KYC record.
-func (r *Repository) SubmitKYC(ctx context.Context, kyc KycInfo) error {
+// SubmitKYC inserts a new KYC record and associated wallet info.
+func (r *Repository) SubmitKYC(ctx context.Context, kyc KycInfo, walletAddress string, walletSignature string) error {
+	// Create KYC record
 	_, err := r.queries.CreateKycInfo(ctx, CreateKycInfoParams{
 		CitizenID:     kyc.CitizenID,
-		FullName:      pgtype.Text{String: kyc.FullName.String, Valid: true},
-		PhoneNumber:   pgtype.Text{String: kyc.PhoneNumber.String, Valid: true},
-		DateOfBirth:   pgtype.Date{Time: kyc.DateOfBirth.Time, Valid: true},
-		Nationality:   pgtype.Text{String: kyc.Nationality.String, Valid: true},
-		Verifier:      pgtype.Text{String: kyc.Verifier.String, Valid: true},
-		IsActive:      pgtype.Bool{Bool: kyc.IsActive.Bool, Valid: true},
-		KycVerifiedAt: pgtype.Timestamp{Time: time.Now(), Valid: true},
+		FullName:      kyc.FullName,
+		PhoneNumber:   kyc.PhoneNumber,
+		DateOfBirth:   kyc.DateOfBirth,
+		Nationality:   kyc.Nationality,
+		Verifier:      kyc.Verifier,
+		IsActive:      kyc.IsActive,
+		KycVerifiedAt: kyc.KycVerifiedAt,
+	})
+	if err != nil {
+		return err
+	}
+
+	// Create or update wallet info
+	err = r.queries.CreateOrUpdateWalletInfo(ctx, CreateOrUpdateWalletInfoParams{
+		WalletAddress:   walletAddress,
+		CitizenID:       pgtype.Text{String: kyc.CitizenID, Valid: true},
+		WalletSignature: pgtype.Text{String: walletSignature, Valid: true},
 	})
 	return err
 }
@@ -73,13 +83,13 @@ func (r *Repository) GetKYCByWalletAddress(ctx context.Context, walletAddress st
 func (r *Repository) UpdateKYC(ctx context.Context, kyc KycInfo) error {
 	_, err := r.queries.UpdateKycInfo(ctx, UpdateKycInfoParams{
 		CitizenID:     kyc.CitizenID,
-		FullName:      pgtype.Text{String: kyc.FullName.String, Valid: true},
-		PhoneNumber:   pgtype.Text{String: kyc.PhoneNumber.String, Valid: true},
-		DateOfBirth:   pgtype.Date{Time: kyc.DateOfBirth.Time, Valid: true},
-		Nationality:   pgtype.Text{String: kyc.Nationality.String, Valid: true},
-		Verifier:      pgtype.Text{String: kyc.Verifier.String, Valid: true},
-		IsActive:      pgtype.Bool{Bool: kyc.IsActive.Bool, Valid: true},
-		KycVerifiedAt: pgtype.Timestamp{Time: time.Now(), Valid: true},
+		FullName:      kyc.FullName,
+		PhoneNumber:   kyc.PhoneNumber,
+		DateOfBirth:   kyc.DateOfBirth,
+		Nationality:   kyc.Nationality,
+		Verifier:      kyc.Verifier,
+		IsActive:      kyc.IsActive,
+		KycVerifiedAt: kyc.KycVerifiedAt,
 	})
 	return err
 }
@@ -163,4 +173,9 @@ func (r *Repository) GetLeaves(ctx context.Context, netId string, contractAddres
 		result[i] = leaf.String
 	}
 	return result, err
+}
+
+// GetKYCStatusByWalletAddress returns only the is_active status for a wallet address.
+func (r *Repository) GetKYCStatusByWalletAddress(ctx context.Context, walletAddress string) (pgtype.Bool, error) {
+	return r.queries.GetKycStatusByWalletAddress(ctx, walletAddress)
 }
