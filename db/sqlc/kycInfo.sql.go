@@ -95,6 +95,19 @@ func (q *Queries) GetKycInfoByWalletAddress(ctx context.Context, walletAddress s
 	return i, err
 }
 
+const getKycStatusByWalletAddress = `-- name: GetKycStatusByWalletAddress :one
+SELECT k.is_active FROM kyc_info k
+JOIN wallet_info w ON k.citizen_id = w.citizen_id
+WHERE w.wallet_address = $1
+`
+
+func (q *Queries) GetKycStatusByWalletAddress(ctx context.Context, walletAddress string) (pgtype.Bool, error) {
+	row := q.db.QueryRow(ctx, getKycStatusByWalletAddress, walletAddress)
+	var is_active pgtype.Bool
+	err := row.Scan(&is_active)
+	return is_active, err
+}
+
 const updateKycInfo = `-- name: UpdateKycInfo :one
 UPDATE kyc_info
 SET full_name = $2, phone_number = $3, date_of_birth = $4, nationality = $5, verifier = $6, is_active = $7, kyc_verified_at = $8

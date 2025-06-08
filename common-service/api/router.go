@@ -24,8 +24,11 @@ func SetupRouter(h *Handler) *gin.Engine {
 	// KYC endpoints
 	r.POST("/kyc", h.SubmitKYC)
 	r.GET("/kyc/citizen/:citizenID", h.GetKYCByCitizenID)
-	// r.GET("/kyc/wallet/:walletAddress", h.GetKYCByWalletAddress)
+	r.GET("/kyc/wallet/:walletAddress", h.GetKYCByWalletAddress)
 	r.PUT("/kyc", h.UpdateKYC)
+
+	// KYC Status Check endpoints
+	r.GET("/kyc/status/wallet/:walletAddress", h.CheckKYCStatusByWalletAddress)
 
 	// Event endpoints
 	r.GET("/events/:netId/:contractAddress/:eventType", h.GetEvents)

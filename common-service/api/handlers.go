@@ -3,9 +3,6 @@ package api
 import (
 	"log"
 	"net/http"
-	// "os"
-	// "path/filepath"
-	// "github.com/xuri/excelize/v2"
 	"strconv"
 	"strings"
 	"time"
@@ -50,154 +47,101 @@ type MintMessage struct {
 	WalletAddress string `json:"wallet_address"`
 }
 
-// logKYCToExcel logs KYC information to an Excel file
-// func logKYCToExcel(kyc sqlc.KycInfo, walletAddress string, status string) error {
-// 	logsDir := "logs"
-// 	log.Printf("Creating logs directory at: %s", logsDir)
-// 	if err := os.MkdirAll(logsDir, 0755); err != nil {
-// 		return fmt.Errorf("failed to create logs directory: %v", err)
-// 	}
-
-// 	currentDate := time.Now().Format("2006-01-02")
-// 	filename := filepath.Join(logsDir, fmt.Sprintf("kyc_logs_%s.xlsx", currentDate))
-// 	log.Printf("Excel file path: %s", filename)
-
-// 	var f *excelize.File
-// 	if _, err := os.Stat(filename); os.IsNotExist(err) {
-// 		log.Printf("Creating new Excel file: %s", filename)
-// 		f = excelize.NewFile()
-// 		headers := []string{"Timestamp", "Citizen ID", "Full Name", "Phone Number", "Date of Birth",
-// 			"Nationality", "Verifier", "Wallet Address", "Status"}
-// 		for i, header := range headers {
-// 			cell := fmt.Sprintf("%c1", 'A'+i)
-// 			f.SetCellValue("Sheet1", cell, header)
-// 		}
-// 	} else {
-// 		log.Printf("Opening existing Excel file: %s", filename)
-// 		var err error
-// 		f, err = excelize.OpenFile(filename)
-// 		if err != nil {
-// 			return fmt.Errorf("failed to open existing file: %v", err)
-// 		}
-// 	}
-
-// 	rows, err := f.GetRows("Sheet1")
-// 	if err != nil {
-// 		return fmt.Errorf("failed to get rows: %v", err)
-// 	}
-// 	lastRow := len(rows) + 1
-// 	log.Printf("Adding new row at position: %d", lastRow)
-
-// 	row := []interface{}{
-// 		time.Now().Format("2006-01-02 15:04:05"),
-// 		kyc.CitizenID,
-// 		kyc.FullName.String,
-// 		kyc.PhoneNumber.String,
-// 		kyc.DateOfBirth.Time.Format("2006-01-02"),
-// 		kyc.Nationality.String,
-// 		kyc.Verifier.String,
-// 		walletAddress,
-// 		status,
-// 	}
-
-// 	for i, value := range row {
-// 		cell := fmt.Sprintf("%c%d", 'A'+i, lastRow)
-// 		f.SetCellValue("Sheet1", cell, value)
-// 	}
-
-// 	log.Printf("Saving Excel file: %s", filename)
-// 	if err := f.SaveAs(filename); err != nil {
-// 		return fmt.Errorf("failed to save file: %v", err)
-// 	}
-// 	log.Printf("Successfully saved Excel file")
-// 	return nil
-// }
-
 // SubmitKYC handles the submission of KYC information.
 func (h *Handler) SubmitKYC(c *gin.Context) {
 	var req KYCRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		log.Printf("Failed to bind JSON: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
 		return
 	}
 
-	log.Printf("Received KYC submission request for wallet: %s", req.WalletAddress)
+	// Validate required fields
+	if req.CitizenID == "" || req.FullName == "" || req.WalletAddress == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing required fields"})
+		return
+	}
+
+	// Debug log: Print request data
+	log.Printf("KYC Request Data: CitizenID=%s, FullName=%s, PhoneNumber=%s, DateOfBirth=%s, Nationality=%s, Verifier=%s, WalletAddress=%s",
+		req.CitizenID, req.FullName, req.PhoneNumber, req.DateOfBirth, req.Nationality, req.Verifier, req.WalletAddress)
 
 	// Check if KYC already exists for this wallet
 	existingKYC, err := h.repo.GetKYCByWalletAddress(c.Request.Context(), req.WalletAddress)
 	if err == nil && existingKYC != nil {
-		// Check if KYC is already active
 		if existingKYC.IsActive.Bool {
-			log.Printf("KYC is already active for wallet %s", req.WalletAddress)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "KYC is already active for this wallet"})
+			c.JSON(http.StatusConflict, gin.H{"error": "KYC is already active for this wallet"})
 			return
 		}
-
-		// KYC exists but not active, proceed with mint
-		log.Printf("KYC exists but not active for wallet %s, proceeding with mint", req.WalletAddress)
-
-		// Log to Excel
-		// if err := logKYCToExcel(*existingKYC, req.WalletAddress, "MINT_REQUESTED"); err != nil {
-		// 	log.Printf("Failed to log KYC to Excel: %v", err)
-		// }
-
 		mintMsg := MintMessage{
 			KycInfo:       *existingKYC,
 			WalletAddress: req.WalletAddress,
 		}
-
-		log.Printf("Publishing mint message for wallet: %s", req.WalletAddress)
 		if err := h.producer.PublishStruct("kyc.mint", mintMsg); err != nil {
-			log.Printf("Failed to publish message: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process KYC submission"})
 			return
 		}
-
-		log.Println("Mint message published successfully")
 		c.JSON(http.StatusOK, gin.H{"message": "KYC exists but not active, proceeding with mint"})
 		return
 	}
 
-	// If KYC doesn't exist, create new KYC
-	kyc := sqlc.KycInfo{
-		CitizenID:   req.CitizenID,
-		FullName:    pgtype.Text{String: req.FullName, Valid: true},
-		PhoneNumber: pgtype.Text{String: req.PhoneNumber, Valid: true},
-		DateOfBirth: pgtype.Date{Time: time.Now(), Valid: true}, // Parse req.DateOfBirth string to time.Time
-		Nationality: pgtype.Text{String: req.Nationality, Valid: true},
-		Verifier:    pgtype.Text{String: req.Verifier, Valid: true},
-		IsActive:    pgtype.Bool{Bool: false, Valid: true},
-	}
-
-	if err := h.repo.SubmitKYC(c.Request.Context(), kyc, req.WalletAddress, req.WalletSignature); err != nil {
-		log.Printf("Failed to submit KYC to database: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	// Parse date of birth
+	dob, err := time.Parse("2006-01-02", req.DateOfBirth)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid date_of_birth format. Use YYYY-MM-DD"})
 		return
 	}
 
-	// Log to Excel
-	// if err := logKYCToExcel(kyc, req.WalletAddress, "SUBMITTED"); err != nil {
-	// 	log.Printf("Failed to log KYC to Excel: %v", err)
-	// }
+	// Parse KYC verified at if provided
+	var kycVerifiedAt pgtype.Timestamp
+	if req.KYCVerifiedAt != "" {
+		verifiedAt, err := time.Parse("2006-01-02 15:04:05", req.KYCVerifiedAt)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid kyc_verified_at format. Use YYYY-MM-DD HH:MM:SS"})
+			return
+		}
+		kycVerifiedAt = pgtype.Timestamp{Time: verifiedAt, Valid: true}
+	} else {
+		kycVerifiedAt = pgtype.Timestamp{Time: time.Now(), Valid: true}
+	}
 
-	log.Println("KYC submitted to database successfully")
+	kyc := sqlc.KycInfo{
+		CitizenID:     req.CitizenID,
+		FullName:      pgtype.Text{String: req.FullName, Valid: true},
+		PhoneNumber:   pgtype.Text{String: req.PhoneNumber, Valid: true},
+		DateOfBirth:   pgtype.Date{Time: dob, Valid: true},
+		Nationality:   pgtype.Text{String: req.Nationality, Valid: true},
+		Verifier:      pgtype.Text{String: req.Verifier, Valid: req.Verifier != ""},
+		IsActive:      pgtype.Bool{Bool: false, Valid: true}, // Khi tạo mới luôn là false
+		KycVerifiedAt: kycVerifiedAt,
+	}
 
-	// Prepare message for RabbitMQ
+	// Debug log: Print created KYC struct
+	log.Printf("Created KYC Struct: CitizenID=%s, FullName={String:%s, Valid:%t}, PhoneNumber={String:%s, Valid:%t}, Nationality={String:%s, Valid:%t}",
+		kyc.CitizenID, kyc.FullName.String, kyc.FullName.Valid, kyc.PhoneNumber.String, kyc.PhoneNumber.Valid, kyc.Nationality.String, kyc.Nationality.Valid)
+
+	if err := h.repo.SubmitKYC(c.Request.Context(), kyc, req.WalletAddress, req.WalletSignature); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save KYC information"})
+		return
+	}
+
 	mintMsg := MintMessage{
 		KycInfo:       kyc,
 		WalletAddress: req.WalletAddress,
 	}
-
-	log.Printf("Publishing mint message for wallet: %s", req.WalletAddress)
 	if err := h.producer.PublishStruct("kyc.mint", mintMsg); err != nil {
-		log.Printf("Failed to publish message: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process KYC submission"})
 		return
 	}
 
-	log.Println("Mint message published successfully")
-	c.JSON(http.StatusOK, gin.H{"message": "KYC submitted successfully"})
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "KYC submitted successfully",
+		"data": gin.H{
+			"citizen_id":     kyc.CitizenID,
+			"wallet_address": req.WalletAddress,
+			"is_active":      kyc.IsActive.Bool,
+		},
+	})
 }
 
 // GetKYCByCitizenID retrieves KYC information by citizen ID.
@@ -226,26 +170,69 @@ func (h *Handler) GetKYCByWalletAddress(c *gin.Context) {
 func (h *Handler) UpdateKYC(c *gin.Context) {
 	var req KYCRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
 		return
 	}
 
+	dob, err := time.Parse("2006-01-02", req.DateOfBirth)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid date_of_birth format. Use YYYY-MM-DD"})
+		return
+	}
+
+	var kycVerifiedAt pgtype.Timestamp
+	if req.KYCVerifiedAt != "" {
+		verifiedAt, err := time.Parse("2006-01-02 15:04:05", req.KYCVerifiedAt)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid kyc_verified_at format. Use YYYY-MM-DD HH:MM:SS"})
+			return
+		}
+		kycVerifiedAt = pgtype.Timestamp{Time: verifiedAt, Valid: true}
+	} else {
+		kycVerifiedAt = pgtype.Timestamp{Time: time.Now(), Valid: true}
+	}
+
 	kyc := sqlc.KycInfo{
-		CitizenID:   req.CitizenID,
-		FullName:    pgtype.Text{String: req.FullName, Valid: true},
-		PhoneNumber: pgtype.Text{String: req.PhoneNumber, Valid: true},
-		DateOfBirth: pgtype.Date{Time: time.Now(), Valid: true}, // Parse req.DateOfBirth string to time.Time
-		Nationality: pgtype.Text{String: req.Nationality, Valid: true},
-		Verifier:    pgtype.Text{String: req.Verifier, Valid: true},
-		IsActive:    pgtype.Bool{Bool: true, Valid: true},
+		CitizenID:     req.CitizenID,
+		FullName:      pgtype.Text{String: req.FullName, Valid: true},
+		PhoneNumber:   pgtype.Text{String: req.PhoneNumber, Valid: true},
+		DateOfBirth:   pgtype.Date{Time: dob, Valid: true},
+		Nationality:   pgtype.Text{String: req.Nationality, Valid: true},
+		Verifier:      pgtype.Text{String: req.Verifier, Valid: req.Verifier != ""},
+		IsActive:      pgtype.Bool{Bool: req.IsActive, Valid: true},
+		KycVerifiedAt: kycVerifiedAt,
 	}
 
 	if err := h.repo.UpdateKYC(c.Request.Context(), kyc); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update KYC information"})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "KYC updated successfully"})
+}
+
+// CheckKYCStatusByWalletAddress checks if KYC is active by wallet address.
+func (h *Handler) CheckKYCStatusByWalletAddress(c *gin.Context) {
+	walletAddress := c.Param("walletAddress")
+	if walletAddress == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing walletAddress parameter"})
+		return
+	}
+
+	isActive, err := h.repo.GetKYCStatusByWalletAddress(c.Request.Context(), walletAddress)
+	if err != nil || !isActive.Valid {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error":          "KYC not found",
+			"wallet_address": walletAddress,
+			"is_active":      false,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"wallet_address": walletAddress,
+		"is_active":      isActive.Bool,
+	})
 }
 
 type EventUriParams struct {

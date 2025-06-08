@@ -70,10 +70,18 @@ func StartMintWorker(repo *sqlc.Repository, rabbitmqURL string) {
 
 			// Only update KYC status if minting was successful
 			log.Println("NFT minted successfully, updating KYC status...")
-			err = repo.UpdateKYC(context.Background(), sqlc.KycInfo{
-				CitizenID: mintMsg.CitizenID,
-				IsActive:  pgtype.Bool{Bool: true, Valid: true},
-			})
+
+			// Get existing KYC info first
+			existingKYC, err := repo.GetKYCByCitizenID(context.Background(), mintMsg.CitizenID)
+			if err != nil {
+				log.Printf("Failed to get existing KYC info: %v", err)
+				return
+			}
+
+			// Update only the IsActive field
+			existingKYC.IsActive = pgtype.Bool{Bool: true, Valid: true}
+
+			err = repo.UpdateKYC(context.Background(), *existingKYC)
 			if err != nil {
 				log.Printf("Failed to update KYC status: %v", err)
 				return
